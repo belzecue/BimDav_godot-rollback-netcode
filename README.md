@@ -37,10 +37,18 @@ into your Godot project *at the exact same path*, that is
 to the "Plugins" tab, and clicking the "Enable" checkbox next to "Godot
 Rollback Netcode".
 
+Games using this addon
+----------------------
+
+ - [Retro Tank Party](https://www.snopekgames.com/games/retro-tank-party)
+
+If you release a game using this addon, please make an MR (Merge Request) to
+add it to the list!
+
 Overview
 --------
 
-This this is a quick overview of the different pieces that addon includes.
+This this is a quick overview of the different pieces that the addon includes.
 
 ### Singletons ###
 
@@ -126,8 +134,10 @@ node:
    into `_network_process()` when using predicted input.
  
  - `_network_process(delta: float, input: Dictionary) -> void`: Process this
-   node for the current tick, using input (real or predicted) if this node
-   returned any input from `_get_local_inpput()`.
+   node for the current tick. The input will contain data from either
+   `_get_local_input()` (if it's real user input) or `_predict_remote_input()`
+   (if it's predicted). If this doesn't implement those methods it'll always
+   be empty.
  
 The following methods are only called on scenes that are spawned/de-spawned
 using `SyncManager.spawn()` and `SyncManager.despawn()`:
@@ -149,7 +159,15 @@ using `SyncManager.spawn()` and `SyncManager.despawn()`:
 
 ### Project settings ###
 
-**TODO**
+The recommended way to configure `SyncManager` is via project settings
+(although, you can change its properties at runtime as well).
+
+You can find its project settings under **Network** -> **Rollback**, after the
+plugin is enabled.
+
+**TODO: add screenshot **
+
+**TODO: Describe each setting **
 
 ### Adaptor classes ###
 
