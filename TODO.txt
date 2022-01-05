@@ -1,0 +1,8 @@
+TODO
+====
+
+ - Write README
+ - Figure out how to have the plugin add F11 for "sync_debug" to the input map
+ - Decide on the final signature of _network_process() - should it include delta or no?
+ - Make release!
+
