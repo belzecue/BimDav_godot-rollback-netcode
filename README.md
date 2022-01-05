@@ -71,11 +71,11 @@ ways that your game will interact with the addon. (The other primary way is
 via psuedo-virtual methods that you'll implement on your nodes - see the
 section called "Psuedo-virtual methods" below for more information.)
 
-#### Properties ####
+#### Properties: ####
 
 **TODO**
 
-#### Methods ####
+#### Methods: ####
 
  - add_peer()
  - start()
@@ -89,7 +89,7 @@ section called "Psuedo-virtual methods" below for more information.)
 
 **TODO**
 
-#### Signals ####
+#### Signals: ####
 
  - sync_started
  - sync_stopped
@@ -101,11 +101,11 @@ section called "Psuedo-virtual methods" below for more information.)
  
 **TODO**
 
-### Node types ###
+### Node types: ###
 
 **TODO**
 
-### Psuedo-virtual methods ###
+### Psuedo-virtual methods: ###
 
 For a node to participate in rollback, it must be in the "network_sync" group,
 which will cause `SyncManager` to call various psuedo-virtual methods on the
@@ -157,7 +157,7 @@ using `SyncManager.spawn()` and `SyncManager.despawn()`:
    `SyncManager.despawn()` or in rollback when this node needs to be despawned
    (ie. when we rollback to a tick before this node was spawned).
 
-### Project settings ###
+### Project settings: ###
 
 The recommended way to configure `SyncManager` is via project settings
 (although, you can change its properties at runtime as well).
@@ -169,12 +169,12 @@ plugin is enabled.
 
 **TODO: Describe each setting **
 
-### Adaptor classes ###
+### Adaptor classes: ###
 
 There are a few adaptor classes that can be used to modify the behavior of
 `SyncManager`.
 
-#### NetworkAdaptor ####
+#### `NetworkAdaptor` ####
 
 **TODO**
 
@@ -182,19 +182,19 @@ Parent class: `res://addons/godot-rollback-netcode/NetworkAdaptor.gd`
 
 Default implementation: `res://addons/godot-rollback-network/RPCNetworkAdaptor.gd`
 
-#### MessageSerializer ####
+#### `MessageSerializer` ####
 
 **TODO**
 
 Parent class and default implementation: `res://addons/godot-rollback-netcode/MessageSerializer.gd`
 
-#### HashSerializer ####
+#### `HashSerializer` ####
 
 **TODO**
 
 Parent class and default implementation: `res://addons/godot-rollback-netcode/HashSerializer.gd`
 
-### "Log inspector" tool in Godot editor ###
+### "Log inspector" tool in Godot editor: ###
 
 **TODO**
 
