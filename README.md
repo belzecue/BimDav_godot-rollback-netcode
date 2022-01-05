@@ -24,13 +24,13 @@ Installing
 
 This addon is implement as an editor plugin.
 
-If you've never installed a plugin before, please see
+If you've never installed a plugin before, please see the
 [official docs on how to install plugins](https://docs.godotengine.org/en/stable/tutorials/plugins/editor/installing_plugins.html)
 
 However, the sort version is:
 
-1. Copy `addons/godot-rollback-netcode` directory from this project copied
-into your Godot project *at the exact same path*, that is
+1. Copy the `addons/godot-rollback-netcode` directory from this project into
+your Godot project *at the exact same path*, that is
 `addons/godot-rollback-netcode`.
 
 2. Enable the plugin by clicking **Project** -> **Project settings...**, going
