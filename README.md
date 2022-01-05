@@ -205,14 +205,43 @@ While there's sure to be edge cases, this is this most common "match flow", or
 the process your game goes through to start, play and stop a match using this
 addon:
 
-1. Get all players connected via Godot's High-Level Multiplayer API
+1. Get all players connected via Godot's
+   [High-Level Multiplayer API](https://docs.godotengine.org/en/stable/tutorials/networking/high_level_multiplayer.html)
 
-2. Initialize the game to its initial state on all clients.
+2. Call `SyncManager.add_peer()` for each peer in the patch.
 
-3. Call `SyncManager.start()`
+3. Initialize the match to its initial state on all clients. Sharing match
+   configuration and letting the "host" know when each client is ready to
+   start can be done using Godot RPC mechanism.
 
-4. In response to the `sync
+4. Call `SyncManager.start()` on the game's "host"
 
+5. Begin the match in all clients in response to the "sync_started" signal.
+
+6. When the match is over, call `SyncManager.stop()` on the game's "host". (If
+   a client needs to leave the match early, they should inform the other
+   clients via an RPC or some other mechanism, and then call
+   `SyncManager.stop()` locally.)
+
+7. Clean-up after the match in all clients in response to the "sync_stopped"
+   signal.
+
+8. If these same players wish to play another match (which can be worked out
+   over RPC), then return to step nr 2.
+
+9. If this client wishes to disconnect from these players entirely, call
+   `SyncManager.clear_peers()` and disconnect from the High-Level Multiplayer
+   API, possibly via `get_tree().multiplayer.close_connection()` (with ENet)
+   or `get_tree.multiplayer.close()` (with WebRTC).
+
+It's also a good idea to connect to the "sync_lost", "sync_regained" and
+"sync_error" signals so you can provide the player with useful error messages
+if something goes wrong.
+
+If you are logging, you'll want to call `SyncManager.start_logging()` just
+before calling `SyncManager.start()` and just after calling
+`SyncManager.stop()`. The logs are meant to contain data from just a single
+match, which is what the "Log inspector" tool will expect.
 
 License
 -------
