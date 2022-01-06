@@ -269,11 +269,10 @@ node:
   input from the last tick will be used as-is.  This input will be passed
   into `_network_process()` when using predicted input.
 
-- `_network_process(delta: float, input: Dictionary) -> void`: Process this
-  node for the current tick. The input will contain data from either
-  `_get_local_input()` (if it's real user input) or `_predict_remote_input()`
-  (if it's predicted). If this doesn't implement those methods it'll always
-  be empty.
+- `_network_process(input: Dictionary) -> void`: Process this node for the
+  current tick. The input will contain data from either `_get_local_input()`
+  (if it's real user input) or `_predict_remote_input()` (if it's predicted).
+  If this node doesn't implement those methods, it'll always be empty.
  
 The following methods are only called on scenes that are spawned/de-spawned
 using `SyncManager.spawn()` and `SyncManager.despawn()`:
