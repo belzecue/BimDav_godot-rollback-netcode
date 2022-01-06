@@ -16,22 +16,23 @@ is important. :-)
 Tutorials
 ---------
 
-I'm working on a series of video tutorials on YouTube. I'll post a link to the
-playlist once the first is finished!
+I'm working on a series of video tutorials on YouTube. You check back on
+[my channel](https://www.youtube.com/SnopekGames),
+but I'll post a more specific link once the first video is finished!
 
 Installing
 ----------
 
-This addon is implement as an editor plugin.
+This addon is implemented as an editor plugin.
 
 If you've never installed a plugin before, please see the
 [official docs on how to install plugins](https://docs.godotengine.org/en/stable/tutorials/plugins/editor/installing_plugins.html)
 
-However, the sort version is:
+However, the short version is:
 
 1. Copy the `addons/godot-rollback-netcode` directory from this project into
-your Godot project *at the exact same path*, that is
-`addons/godot-rollback-netcode`.
+your Godot project *at the exact same path*. The easiest way to do this is in
+the AssetLib right in the Godot editor - search for "Godot Rollback Netcode".
 
 2. Enable the plugin by clicking **Project** -> **Project settings...**, going
 to the "Plugins" tab, and clicking the "Enable" checkbox next to "Godot
@@ -53,7 +54,7 @@ This this is a quick overview of the different pieces that the addon includes.
 ### Singletons ###
 
  - `res://addons/godot-rollback-netcode/SyncManager.gd`: This is the core of
-   the addon. It should be added to your project automatically when you enable
+   the addon. It will be added to your project automatically when you enable
    the plugin. It must be named `SyncManager` for everything to work
    correctly.
  
@@ -77,17 +78,75 @@ section called "Psuedo-virtual methods" below for more information.)
 
 #### Methods: ####
 
- - add_peer()
- - start()
- - stop()
- - clear_peers()
- - start_logging()
- - stop_logging()
- - spawn()
- - despawn()
- - play_sound()
+- `add_peer(peer_id: int) -> void`: Adds a peer using its ID within Godot's
+  [High-Level Multiplayer API](https://docs.godotengine.org/en/stable/tutorials/networking/high_level_multiplayer.html).
+  Once a peer is added, the `SyncManager` will start pinging it right away.
+  All peers should be added before calling `SyncManager.start()`.
 
-**TODO**
+- `start() -> void`: Starts synchronizing! This should only be called on the
+  "host" (ie. the peer with id 1), which will tell all the other clients to
+  start as well. It's after calling this that the "Psuedo-virtual methods"
+  described below will start getting called.
+
+- `stop() -> void`: Stops synchronizing. If called on the "host" (ie. the
+  peer with id 1) it will tell all the clients to stop as well.
+  
+- `clear_peers() -> void`: Clears the list of peers.
+
+- `start_logging(log_file_path: String, match_info: Dictionary = {}) -> void`:
+  Starts logging detailed information about the current match to the given
+  log file. The common convention is to put the log file under
+  "user://detailed_logs/". The `match_info` is stored at the start of the
+  log, and is used when loading a replay of the match. This method should
+  be called before `SyncManager.start()` or the "sync_started" signal.
+
+- `stop_logging() -> void`: Stops logging. This method should be called
+  after `SyncManager.stop()` or the "sync_stopped" signal.
+
+- `spawn(name: String, parent: Node, scene: PackedScene, data: Dictionary = {}, rename: bool = true, signal_name: String = '') -> void`:
+  Spawns a scene and makes a "spawn record" in state so that it can be
+  de-spawned or re-spawned as the result of a rollback.
+  * `name`: The base name to use for the top-level node that is spawned.
+  * `parent`: The parent node the spawned scene will be added to.
+  * `scene`: The scene to spawn.
+  * `data`: Data that will be passed `_network_spawn_preprocess()` and
+    `_network_spawn()` on the top-level node. See the "Psuedo-virtual
+     methods" described below for more information.
+  * `rename`: If true, the actual name of the top-level node that is spawned
+    will have an incrementing integer appended to it. If false, it'll try to
+    use the `name` but this could lead to conflicts. Only set to false if you
+    know for sure that no other sibling node will use that name.
+  * `signal_name`: If provided, this is the name that'll be passed to the
+    "scene_spawned" signal; otherwise the `name` will be used.
+
+- `despawn(node: Node) -> void`: De-spawns a node that was previously
+  spawned via `SyncManager.spawn()`, calls `_network_despawn()` and removes
+  its "spawn record" in state.  By default, this will also remove the node
+  from its parent and call `node.queue_free()`. However, if you have enabled
+  "Reuse despawned nodes" in Project Settings, then the node will saved and
+  reused when the same scene needs to be spawned later. This makes it
+  especially important to clean-up the nodes internal state in
+  `_network_despawn()` so that the node is "like new" when reused.
+
+- `play_sound(identifier: String, sound: AudioStream, info: Dictionary = {}) -> void`:
+  Plays a sound and records that we played this specific sound on the
+  current tick, so that we won't play it again if we re-execute the same
+  tick again due to a rollback.
+  * `identifier`: A unique identifier for the sound. Only one sound with this
+    identifier will be played on the current tick. The common convention is
+    to use the node path of the node player sound with the sort of sound
+    appended, for example:
+    ```
+    SyncManager.play_sound(str(get_path()) + ':shoot', shoot_sound)
+    ```
+  * `sound`: The sound resource to play.
+  * `info`: A set of optional parameters, including:
+    - `position`: A `Vector2` giving the position the sound should originate
+      from. If omitted, positional audio won't be used.
+    - `volume_db`: A `float` giving the volume in decibels.
+    - `pitch_scale`: A `float` to scale the patch.
+    - `bus`: The name of the bus to play the sound to. If none is given, the
+      default bus configured in Project Settings will be used.
 
 #### Signals: ####
 
