@@ -394,23 +394,45 @@ There are a few adaptor classes that can be used to modify the behavior of
 
 #### `NetworkAdaptor` ####
 
-**TODO**
+All network communication from `SyncManager` passes through its
+`NetworkAdaptor`. The default implementation uses RPCs.
 
-Parent class: `res://addons/godot-rollback-netcode/NetworkAdaptor.gd`
+You can replace the network adaptor with your own class, in order to
+customize network communications.
 
-Default implementation: `res://addons/godot-rollback-network/RPCNetworkAdaptor.gd`
+**Parent class:** `res://addons/godot-rollback-netcode/NetworkAdaptor.gd`
+
+**Default implementation:** `res://addons/godot-rollback-network/RPCNetworkAdaptor.gd`
+
+There is an additional implemetation included to integrate with the
+[WebRTC and Nakama addon for Godot](https://gitlab.com/snopek-games/godot-nakama-webrtc)
+which can be found at `res://addons/godot-rollback-network/NakamaWebRTCNetworkAdaptor.gd`.
 
 #### `MessageSerializer` ####
 
-**TODO**
+The message serializer will convert input messages to bytes for sending to
+the other clients.
 
-Parent class and default implementation: `res://addons/godot-rollback-netcode/MessageSerializer.gd`
+The default implementation is relatively wasteful (ie. it will likely lead to
+messages exceeding the [MTU](https://en.wikipedia.org/wiki/Maximum_transmission_unit))
+so you will **ALMOST ALWAYS** want to replace it with your own implementation
+that can pack the data as small as possible. This can only be done by knowing
+the structure and meaning of the data, which is why the game developer needs
+to do it.
+
+**Parent class and default implementation:** `res://addons/godot-rollback-netcode/HashSerializer.gd`
 
 #### `HashSerializer` ####
 
-**TODO**
+The hash serializer will convert state or input into primitive types so that
+we can hash the Dictionary for use in comparisons.
 
-Parent class and default implementation: `res://addons/godot-rollback-netcode/HashSerializer.gd`
+The default implementation can't handle Objects in a smart way, and if you
+include any in your input or state, it could lead to SyncManager thinking that
+input/state doesn't match, when it does. Replace this with your own
+implementation to convert any objects into a primitive type.
+
+**Parent class and default implementation:** `res://addons/godot-rollback-netcode/MessageSerializer.gd`
 
 ### "Log inspector" tool in Godot editor: ###
 
