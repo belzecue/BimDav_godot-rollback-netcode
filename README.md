@@ -53,17 +53,17 @@ This this is a quick overview of the different pieces that the addon includes.
 
 ### Singletons ###
 
- - `res://addons/godot-rollback-netcode/SyncManager.gd`: This is the core of
-   the addon. It will be added to your project automatically when you enable
-   the plugin. It must be named `SyncManager` for everything to work
-   correctly.
+- `res://addons/godot-rollback-netcode/SyncManager.gd`: This is the core of
+  the addon. It will be added to your project automatically when you enable
+  the plugin. It must be named `SyncManager` for everything to work
+  correctly.
  
- - `res://addons/godot-rollback-netcode/SyncDebugger.gd`: Adding this
-   singleton will cause more debug messages to be printed to the console (and
-   captured in the normal Godot logs) and make a debug overlay available. By
-   default, the overlay can be shown by pressing F11, but you can assign any
-   input event to the "sync_debug" action in the Input Map in your project's
-   settings.
+- `res://addons/godot-rollback-netcode/SyncDebugger.gd`: Adding this
+  singleton will cause more debug messages to be printed to the console (and
+  captured in the normal Godot logs) and make a debug overlay available. By
+  default, the overlay can be shown by pressing F11, but you can assign any
+  input event to the "sync_debug" action in the Input Map in your project's
+  settings.
 
 ### Important properties, methods and signals on `SyncManager` ###
 
@@ -170,51 +170,51 @@ For a node to participate in rollback, it must be in the "network_sync" group,
 which will cause `SyncManager` to call various psuedo-virtual methods on the
 node:
 
- - `_save_state() -> Dictionary`: Return the current node state. This same
-   state will be passed to `_load_state()` when performing a rollback.
+- `_save_state() -> Dictionary`: Return the current node state. This same
+  state will be passed to `_load_state()` when performing a rollback.
 
- - `_load_state(state: Dictionary) -> void`: Called to roll the node back to a
-   previous state, which originated from this node's `_save_state()` method.
+- `_load_state(state: Dictionary) -> void`: Called to roll the node back to a
+  previous state, which originated from this node's `_save_state()` method.
 
- - `_interpolate_state(old_state: Dictionary, new_state: Dictionary, weight: float) -> void`:
-   Updates the current state of the node using values interpolated from the
-   old to the new state. This will only be called if "Interpolation" is
-   enabled in project settings.
- 
- - `_get_local_input() -> Dictionary`: Return the local input that this node
-   needs to operate. Not all nodes need input, in fact, most do not. This is
-   used most commonly on the node representing a player. This input will
-   be passed into `_network_process()`.
- 
- - `_predict_remote_input(previous_input: Dictionary, ticks_since_real_input: int) -> Dictionary`:
-   Return predicted remote input based on the input from the previous tick,
-   which may itself be predicted. If this method isn't provided, the same
-   input from the last tick will be used as-is.  This input will be passed
-   into `_network_process()` when using predicted input.
- 
- - `_network_process(delta: float, input: Dictionary) -> void`: Process this
-   node for the current tick. The input will contain data from either
-   `_get_local_input()` (if it's real user input) or `_predict_remote_input()`
-   (if it's predicted). If this doesn't implement those methods it'll always
-   be empty.
+- `_interpolate_state(old_state: Dictionary, new_state: Dictionary, weight: float) -> void`:
+  Updates the current state of the node using values interpolated from the
+  old to the new state. This will only be called if "Interpolation" is
+  enabled in project settings.
+
+- `_get_local_input() -> Dictionary`: Return the local input that this node
+  needs to operate. Not all nodes need input, in fact, most do not. This is
+  used most commonly on the node representing a player. This input will
+  be passed into `_network_process()`.
+
+- `_predict_remote_input(previous_input: Dictionary, ticks_since_real_input: int) -> Dictionary`:
+  Return predicted remote input based on the input from the previous tick,
+  which may itself be predicted. If this method isn't provided, the same
+  input from the last tick will be used as-is.  This input will be passed
+  into `_network_process()` when using predicted input.
+
+- `_network_process(delta: float, input: Dictionary) -> void`: Process this
+  node for the current tick. The input will contain data from either
+  `_get_local_input()` (if it's real user input) or `_predict_remote_input()`
+  (if it's predicted). If this doesn't implement those methods it'll always
+  be empty.
  
 The following methods are only called on scenes that are spawned/de-spawned
 using `SyncManager.spawn()` and `SyncManager.despawn()`:
 
- - `_network_spawn_preprocess(data: Dictionary) -> Dictionary`: Pre-processes
-   the data passed to `SyncManager.spawn()` before it gets passed to
-   `_network_spawn()`. The modified data returned by this method is what will
-   get saved in state. This allows nodes to developer-friendly data in
-   `SyncManager.spawn()` and this method can convert it into data that is
-   better to be stored in state.
- 
- - `_network_spawn(data: Dictionary) -> void`: Called when a scene is spawned
-   by `SyncManager.spawn()` or in rollback when this node needs to be
-   respawned (ie. when we rollback to a tick before this node was despawned).
- 
- - `_network_despawn() -> void`: Called when a node is despawned by
-   `SyncManager.despawn()` or in rollback when this node needs to be despawned
-   (ie. when we rollback to a tick before this node was spawned).
+- `_network_spawn_preprocess(data: Dictionary) -> Dictionary`: Pre-processes
+  the data passed to `SyncManager.spawn()` before it gets passed to
+  `_network_spawn()`. The modified data returned by this method is what will
+  get saved in state. This allows nodes to developer-friendly data in
+  `SyncManager.spawn()` and this method can convert it into data that is
+  better to be stored in state.
+
+- `_network_spawn(data: Dictionary) -> void`: Called when a scene is spawned
+  by `SyncManager.spawn()` or in rollback when this node needs to be
+  respawned (ie. when we rollback to a tick before this node was despawned).
+
+- `_network_despawn() -> void`: Called when a node is despawned by
+  `SyncManager.despawn()` or in rollback when this node needs to be despawned
+  (ie. when we rollback to a tick before this node was spawned).
 
 ### Project settings ###
 
