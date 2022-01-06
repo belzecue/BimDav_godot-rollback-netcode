@@ -2,6 +2,5 @@ TODO
 ====
 
  - Write README
- - Decide on the final signature of _network_process() - should it include delta or no?
  - Make release!
 
