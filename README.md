@@ -41,7 +41,7 @@ Rollback Netcode".
 Games using this addon
 ----------------------
 
- - [Retro Tank Party](https://www.snopekgames.com/games/retro-tank-party)
+- [Retro Tank Party](https://www.snopekgames.com/games/retro-tank-party)
 
 If you release a game using this addon, please make an MR (Merge Request) to
 add it to the list!
@@ -74,7 +74,17 @@ section called "Psuedo-virtual methods" below for more information.)
 
 #### Properties: ####
 
-**TODO**
+- `current_tick: int`: The current tick that we are executing. This will
+  update during rollback to be tick that is presently being re-executed.
+
+- `input_tick: int`: The tick we are currently gathering local input for. If
+  there is an input delay configured in Project Settings, this be ahead of
+  `current_tick` by the number of frames of input delay. This doesn't change
+  during rollback.
+
+- `started: bool`: will be true if synchronization has started; otherwise
+  it'll be false. This property is read-only - you should call the `start()`
+  or `stop()` methods to start or stop synchronizing.
 
 #### Methods: ####
 
@@ -103,9 +113,17 @@ section called "Psuedo-virtual methods" below for more information.)
 - `stop_logging() -> void`: Stops logging. This method should be called
   after `SyncManager.stop()` or the "sync_stopped" signal.
 
-- `spawn(name: String, parent: Node, scene: PackedScene, data: Dictionary = {}, rename: bool = true, signal_name: String = '') -> void`:
+- `spawn(name: String, parent: Node, scene: PackedScene, data: Dictionary = {}, rename: bool = true, signal_name: String = '') -> Node`:
   Spawns a scene and makes a "spawn record" in state so that it can be
   de-spawned or re-spawned as the result of a rollback.
+
+  It returns the top-level node that was spawned, however, rather than doing
+  most setup on the returned node, you should do it in response to the
+  "scene_spawned" signal. This is because the scene could be re-spawned due
+  to a rollback, and you want all the same setup to happen then as when it
+  was originally spawned. (Note: there are rare cases when you want to do
+  setup *only* when spawned initially, and not when re-spawned.)
+
   * `name`: The base name to use for the top-level node that is spawned.
   * `parent`: The parent node the spawned scene will be added to.
   * `scene`: The scene to spawn.
@@ -150,16 +168,41 @@ section called "Psuedo-virtual methods" below for more information.)
 
 #### Signals: ####
 
- - sync_started
- - sync_stopped
- - sync_lost
- - sync_regained
- - sync_error
- - scene_spawned
- - interpolation_frame
- 
-**TODO**
+- `sync_started ()`: Emitted when synchronization has started, as a result of
+  `SyncManager.start()` on the "host".
 
+- `sync_stopped ()`: Emitted when synchronization has stopped for any reason -
+  it could be due to an error (in which case "sync_error" will have been
+  emitted before this signal) or `SyncManager.stop()` being called locally or
+  on the "host".
+
+- `sync_lost ()`: Emitted when this client has gone far enough out of sync with
+  the other clients that we need to pause for a period of time and attempt to
+  regain synchronization. A message should be shown to the user so they know
+  why the match has suddenly come to stop.
+
+- `sync_regained ()`: Emitted if we've managed to regain sync after it had been
+  lost. The message shown to the user when "sync_lost" was emitted should be
+  removed.
+
+- `sync_error (msg: String)`: Emitted when a fatal synchronization error has
+  occurred and the match cannot continue. This could be for a number of
+  reasons, which will be identified in a human-readable message in `msg`.
+
+- `scene_spawned (name: String, spawned_node: Node, scene: PackedScene, data: Dictionary)`:
+  Emitted when a scene is spawned via `SyncManager.spawn()` or re-spawned due
+  to a rollback. Connect to this signal when you want to do some setup on a
+  scene that was spawned, and you need to ensure that that setup also happens
+  if the scene is re-spawned during rollback (you want this most of the time).
+
+- `interpolation_frame ()`: If interpolation is enabled in Project Settings,
+  the work of the `SyncManager` will be split between "tick frames" (where
+  input is gathered, rollbacks are performed and ticks are executed) and
+  a variable number of "interpolation frames" that happen between them.
+  This signal is emitted at the end of each interpolation frame, so that
+  you can perform some operation during a frame with with a more budget
+  to spare (a lot more needs to happen during tick frames).
+ 
 ### Node types ###
 
 **TODO**
