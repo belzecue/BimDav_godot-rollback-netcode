@@ -420,7 +420,7 @@ that can pack the data as small as possible. This can only be done by knowing
 the structure and meaning of the data, which is why the game developer needs
 to do it.
 
-**Parent class and default implementation:** `res://addons/godot-rollback-netcode/HashSerializer.gd`
+**Parent class and default implementation:** `res://addons/godot-rollback-netcode/MessageSerializer.gd`
 
 #### `HashSerializer` ####
 
@@ -432,7 +432,7 @@ include any in your input or state, it could lead to SyncManager thinking that
 input/state doesn't match, when it does. Replace this with your own
 implementation to convert any objects into a primitive type.
 
-**Parent class and default implementation:** `res://addons/godot-rollback-netcode/MessageSerializer.gd`
+**Parent class and default implementation:** `res://addons/godot-rollback-netcode/HashSerializer.gd`
 
 ### "Log Inspector" tool in Godot editor: ###
 
