@@ -75,7 +75,7 @@ section called "Psuedo-virtual methods" below for more information.)
 #### Properties: ####
 
 - `current_tick: int`: The current tick that we are executing. This will
-  update during rollback to be tick that is presently being re-executed.
+  update during rollback to be the tick that is presently being re-executed.
 
 - `input_tick: int`: The tick we are currently gathering local input for. If
   there is an input delay configured in Project Settings, this be ahead of
