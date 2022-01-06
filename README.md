@@ -294,15 +294,98 @@ using `SyncManager.spawn()` and `SyncManager.despawn()`:
 
 ### Project settings ###
 
-The recommended way to configure `SyncManager` is via project settings
-(although, you can change its properties at runtime as well).
+The recommended way to configure `SyncManager` is via Project Settings
+(although, you can change its properties in code at runtime as well).
 
 You can find its project settings under **Network** -> **Rollback**, after the
 plugin is enabled.
 
-**TODO: add screenshot **
+![Screenshot of "Rollback" section in Project Settings](assets/screenshots/project_settings.png)
 
-**TODO: Describe each setting **
+- **Max Buffer Size**: The number of state frames to keep in the buffer. This
+  defines the maximum number of ticks that the game can rollback.
+- **Ticks To Calculate Advantage**: The number of ticks we collect advantage
+  calculations from each peer before calculating an average, and possible
+  skipping some frames so other clients can catch up.
+- **Input Delay**: The number of frames of input delay.
+- **Ping Frequency**: The number of seconds between each ping.
+- **Interpolation**: If enabled, we'll do 1 tick of interpolation. This
+  allows the simulation frequency to be set lower than the rendering FPS,
+  while still rendering smoothly.
+
+**Limits:**
+
+- **Max Input Frames Per Message**: The maximum number of input frames that
+  will be sent in a single message. If there are more input frames, then
+  multiple messages will be sent.
+- **Max Messages At Once**: The maximum messages that will be sent to one
+  peer at a time. If there are more messages, then the middle ones will be
+  omitted (so the newest and oldest input frames will be sent).
+- **Max Ticks To Regain Sync**: If the clients get out of sync, and they
+  don't manage to regain sync after this many ticks have been skipped, then
+  `SyncManager` will emit "sync_error" and kill the match.
+- **Min Lag To Regain Sync**: If we've lost sync due to an input buffer
+  underrun, then `SyncManager` won't start running again, until the minimum
+  lag with all clients is above this value. This is to prevent the game
+  immediately losing sync right after it has regained it, ie. pausing for
+  a slightly longer time, to avoid a series of smaller pauses.
+- **Max State Mismatch Count**: If more than this many state mismatches are
+  detected in a row, it's considered a fatal state mismatch, and
+  `SyncManager` will emit "sync_error" and kill the match.
+
+**Spawn Manager:**
+
+- **Reuse Despawned Nodes**: If enabled, despawned nodes will be reused
+  rather than instancing the scene everytime. This is can provide a large
+  performance boost, but it requires the developer to carefully reset state
+  during `_network_despawn()`.
+
+**Sound Manager:**
+
+- **Default Sound Bus**: The name of the default sound bus to use when
+  playing sounds via `SyncManager.play_sound()`. If omitted, then "Master"
+  will be used.
+
+**Classes:**
+
+These are all paths to classes that override the default implementations of
+the "Adaptor classes" described in the section of the same name below.
+
+If any are omitted, then the default implementation will be used.
+
+**Debug:**
+
+*WARNING: Do not keep these settings enabled in the release version of your
+game!*
+
+- **Rollback Ticks**: If set, every tick, the game will rollback at least the
+  number of ticks given here. This is a great setting to have enabled when
+  implementing new game logic, as some problems won't be apparent until
+  a series of rollbacks occur.
+- **Random Rollback Ticks**: If set, every tick, the game will rollback a
+  random number of ticks up to the given value. This can help find bugs that
+  only appear when two clients rollback a different number of ticks when
+  executing the same logic.  If "Rollback Ticks" is also set, it will
+  effectively set a minimum value.
+- **Message Bytes**: If any message exceeds the given number of bytes, an
+  error will be pushed to the editor and console, including the size of the
+  offending message.
+- **Skip Nth Message**: If set, every nth message will not be sent. This is a
+  quick way to simulate packet loss, but it isn't very accurate. System-level
+  tools or a proxy will always give more accurate results.
+- **Physics Process Msecs**: If `SyncManager._physics_process()` takes more
+  than this many milliseconds, then an error will be pushed to the editor and
+  console, including how long it actually took.
+- **Process Msecs**: If `SyncManager._process()` takes more than this many
+  milliseconds, then an error will be push to the editor and console,
+  including how long it actually took.
+
+#### Other important settings not under "Rollback": ####
+
+- **Physics** -> **Common** -> **Physics FPS**: Since the addon uses
+  `_physics_process()` to run tick frames, this controls the simulation
+  frequency. If you're using interpolation, it's best if this value can
+  evenly divide the rendering FPS.
 
 ### Adaptor classes ###
 
