@@ -453,7 +453,7 @@ The "Frame" viewer shows data about each frame executed, including tick
 frames, interpolation frames and skipped frames. The x-axis is milliseconds
 since the match began. It uses the system clock of the computer the client
 ran on, so their clocks may not be synchronized. You can correct for this
-by adding or subtracting milliseconds from each peer on the "Setting" dialog.
+by adding or subtracting milliseconds from each peer on the "Settings" dialog.
 
 You can click anywhere on the graph, and it will show all the data logged on
 the previous frame for each client in the lower part of the window. This data
@@ -529,9 +529,9 @@ It's also a good idea to connect to the "sync_lost", "sync_regained" and
 if something goes wrong.
 
 If you are logging, you'll want to call `SyncManager.start_logging()` just
-before calling `SyncManager.start()` and just after calling
-`SyncManager.stop()`. The logs are meant to contain data from just a single
-match, which is what the "Log inspector" tool will expect.
+before calling `SyncManager.start()`, and `SyncManager.stop_logging()` just
+after calling `SyncManager.stop()`. The logs are meant to contain data from
+just a single match, which is what the "Log inspector" tool will expect
 
 License
 -------
