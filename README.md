@@ -69,8 +69,8 @@ This this is a quick overview of the different pieces that the addon includes.
 
 The `SyncManager` singleton is the core of this addon, and one of the primary
 ways that your game will interact with the addon. (The other primary way is
-via psuedo-virtual methods that you'll implement on your nodes - see the
-section called "Psuedo-virtual methods" below for more information.)
+via virtual methods that you'll implement in scripts on your nodes - see the
+section called "Virtual methods" below for more information.)
 
 #### Properties: ####
 
@@ -95,7 +95,7 @@ section called "Psuedo-virtual methods" below for more information.)
 
 - `start() -> void`: Starts synchronizing! This should only be called on the
   "host" (ie. the peer with id 1), which will tell all the other clients to
-  start as well. It's after calling this that the "Psuedo-virtual methods"
+  start as well. It's after calling this that the "Virtual methods"
   described below will start getting called.
 
 - `stop() -> void`: Stops synchronizing. If called on the "host" (ie. the
@@ -128,8 +128,8 @@ section called "Psuedo-virtual methods" below for more information.)
   * `parent`: The parent node the spawned scene will be added to.
   * `scene`: The scene to spawn.
   * `data`: Data that will be passed `_network_spawn_preprocess()` and
-    `_network_spawn()` on the top-level node. See the "Psuedo-virtual
-     methods" described below for more information.
+    `_network_spawn()` on the top-level node. See the "Virtual methods"
+    described below for more information.
   * `rename`: If true, the actual name of the top-level node that is spawned
     will have an incrementing integer appended to it. If false, it'll try to
     use the `name` but this could lead to conflicts. Only set to false if you
@@ -241,11 +241,10 @@ This addon include a few rollback-aware node types:
   seeds grown from the "mother seed". This will work so long as the nodes are
   always initialized in a deteriministic order!
 
-### Psuedo-virtual methods ###
+### Virtual methods ###
 
 For a node to participate in rollback, it must be in the "network_sync" group,
-which will cause `SyncManager` to call various psuedo-virtual methods on the
-node:
+which will cause `SyncManager` to call various virtual methods on the node:
 
 - `_save_state() -> Dictionary`: Return the current node state. This same
   state will be passed to `_load_state()` when performing a rollback.
