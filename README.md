@@ -347,8 +347,8 @@ plugin is enabled.
 
 - **Reuse Despawned Nodes**: If enabled, de-spawned nodes will be reused
   rather than instancing the scene every time. This is can provide a large
-  performance boost, but it requires the developer to carefully reset state
-  during `_network_despawn()`.
+  performance boost in games that do a lot of spawning, but it requires the
+  developer to carefully reset state during `_network_despawn()`.
 
 **Sound Manager:**
 
