@@ -481,7 +481,7 @@ the other peer receives that input. This gives a visual representation of the
 network traffic between those two peers. The pair of peers can be selected in
 the "Settings" dialog.
 
-The orange line, represents the number of rollbacks performed on a given
+The orange line represents the number of rollbacks performed on a given
 "tick frame", allowing you to easily see how many mispredictions occurred
 and during which portions of the match.
 
@@ -511,7 +511,7 @@ addon:
 1. Get all players connected via Godot's
    [High-Level Multiplayer API](https://docs.godotengine.org/en/stable/tutorials/networking/high_level_multiplayer.html)
 
-2. Call `SyncManager.add_peer()` for each peer in the patch.
+2. Call `SyncManager.add_peer()` for each peer in the match.
 
 3. Initialize the match to its initial state on all clients. Sharing match
    configuration and letting the "host" know when each client is ready to
