@@ -105,7 +105,7 @@ section called "Virtual methods" below for more information.)
 
 - `start_logging(log_file_path: String, match_info: Dictionary = {}) -> void`:
   Starts logging detailed information about the current match to the given
-  log file. The common convention is to put the log file under
+  log file. The common convention is to put the log files under
   "user://detailed_logs/". The `match_info` is stored at the start of the
   log, and is used when loading a replay of the match. This method should
   be called before `SyncManager.start()` or the "sync_started" signal.
@@ -120,14 +120,14 @@ section called "Virtual methods" below for more information.)
   It returns the top-level node that was spawned, however, rather than doing
   most setup on the returned node, you should do it in response to the
   "scene_spawned" signal. This is because the scene could be re-spawned due
-  to a rollback, and you want all the same setup to happen then as when it
-  was originally spawned. (Note: there are rare cases when you want to do
-  setup *only* when spawned initially, and not when re-spawned.)
+  to a rollback, and you probably want all the same setup to happen then as
+  when it was originally spawned. (Note: there are rare cases when you do want
+  to do setup *only* when spawned initially, and not when re-spawned.)
 
   * `name`: The base name to use for the top-level node that is spawned.
   * `parent`: The parent node the spawned scene will be added to.
   * `scene`: The scene to spawn.
-  * `data`: Data that will be passed `_network_spawn_preprocess()` and
+  * `data`: Data that will be passed to `_network_spawn_preprocess()` and
     `_network_spawn()` on the top-level node. See the "Virtual methods"
     described below for more information.
   * `rename`: If true, the actual name of the top-level node that is spawned
@@ -138,10 +138,10 @@ section called "Virtual methods" below for more information.)
     "scene_spawned" signal; otherwise the `name` will be used.
 
 - `despawn(node: Node) -> void`: De-spawns a node that was previously
-  spawned via `SyncManager.spawn()`, calls `_network_despawn()` and removes
-  its "spawn record" in state.  By default, this will also remove the node
+  spawned via `SyncManager.spawn()`. It calls `_network_despawn()` and removes
+  the "spawn record" in state.  By default, this will also remove the node
   from its parent and call `node.queue_free()`. However, if you have enabled
-  "Reuse despawned nodes" in Project Settings, then the node will saved and
+  "Reuse despawned nodes" in Project Settings, then the node will be saved and
   reused when the same scene needs to be spawned later. This makes it
   especially important to clean-up the nodes internal state in
   `_network_despawn()` so that the node is "like new" when reused.
@@ -152,8 +152,8 @@ section called "Virtual methods" below for more information.)
   tick again due to a rollback.
   * `identifier`: A unique identifier for the sound. Only one sound with this
     identifier will be played on the current tick. The common convention is
-    to use the node path of the node player sound with the sort of sound
-    appended, for example:
+    to use the node path of the node playing the sound, with some sort of
+    "tag" appended, for example:
     ```
     SyncManager.play_sound(str(get_path()) + ':shoot', shoot_sound)
     ```
@@ -162,7 +162,7 @@ section called "Virtual methods" below for more information.)
     - `position`: A `Vector2` giving the position the sound should originate
       from. If omitted, positional audio won't be used.
     - `volume_db`: A `float` giving the volume in decibels.
-    - `pitch_scale`: A `float` to scale the patch.
+    - `pitch_scale`: A `float` to scale the pitch.
     - `bus`: The name of the bus to play the sound to. If none is given, the
       default bus configured in Project Settings will be used.
 
@@ -178,12 +178,13 @@ section called "Virtual methods" below for more information.)
 
 - `sync_lost ()`: Emitted when this client has gone far enough out of sync with
   the other clients that we need to pause for a period of time and attempt to
-  regain synchronization. A message should be shown to the user so they know
-  why the match has suddenly come to stop.
+  regain synchronization. Your game should show some indication (a message or
+  loading icon) to the player so that they know why the match has suddenly
+  come to a stop.
 
 - `sync_regained ()`: Emitted if we've managed to regain sync after it had been
-  lost. The message shown to the user when "sync_lost" was emitted should be
-  removed.
+  lost. The message or icon your game showed to the player when "sync_lost" was
+  emitted should be removed.
 
 - `sync_error (msg: String)`: Emitted when a fatal synchronization error has
   occurred and the match cannot continue. This could be for a number of
@@ -193,14 +194,15 @@ section called "Virtual methods" below for more information.)
   Emitted when a scene is spawned via `SyncManager.spawn()` or re-spawned due
   to a rollback. Connect to this signal when you want to do some setup on a
   scene that was spawned, and you need to ensure that that setup also happens
-  if the scene is re-spawned during rollback (you want this most of the time).
+  if the scene is re-spawned during rollback (you want to do this most of the
+  time).
 
 - `interpolation_frame ()`: If interpolation is enabled in Project Settings,
   the work of the `SyncManager` will be split between "tick frames" (where
   input is gathered, rollbacks are performed and ticks are executed) and
   a variable number of "interpolation frames" that happen between them.
   This signal is emitted at the end of each interpolation frame, so that
-  you can perform some operation during a frame with with a more budget
+  you can perform some operations during a frame with more time budget
   to spare (a lot more needs to happen during tick frames).
  
 ### Node types ###
@@ -222,8 +224,8 @@ This addon include a few rollback-aware node types:
   If `auto_reset` is set to true, it will automatically play the "RESET"
   animation everytime state is loaded without an animation playing. This can
   help prevent issues where an animation started, but on rollback it's
-  determined that it shouldn't have started, so the animation player is left
-  in an in-between state.
+  determined that it shouldn't have started, so the animation is left in an
+  in-between state.
 
 - `NetworkRandomNumberGenerator`: For generating random numbers in a
   deterministic way that supports rollback. At the start of the match, the
@@ -233,20 +235,20 @@ This addon include a few rollback-aware node types:
   same. When a rollback happens, it's internal state will rollback such that
   it'll generate the same sequence of numbers again.
 
-  One way to avoid having to share a random seed for every
-  `NetworkRandomNumberGenerator` in the game, is to have a "mother seed"
-  which is used for a single `NetworkRandomNumberGenerator` and then the
-  seeds for the other ones are random numbers generated by the first. I like
-  to call this the "Johnny Appleseed approach" where "Johnny" is distributing
-  seeds grown from the "mother seed". This will work so long as the nodes are
-  always initialized in a deteriministic order!
+  One way to avoid having to share a seed for every
+  `NetworkRandomNumberGenerator` in the game, is to share a single "mother
+  seed" which is used for one `NetworkRandomNumberGenerator` that
+  generates all the other seeds the game needs. I like to call this the
+  "Johnny Appleseed approach" where "Johnny" is distributing seeds grown from
+  the "mother seed". This will work so long as the nodes are always initialized
+  in a deteriministic order!
 
 ### Virtual methods ###
 
 For a node to participate in rollback, it must be in the "network_sync" group,
 which will cause `SyncManager` to call various virtual methods on the node:
 
-- `_save_state() -> Dictionary`: Return the current node state. This same
+- `_save_state() -> Dictionary`: Returns the current node state. This same
   state will be passed to `_load_state()` when performing a rollback.
 
 - `_load_state(state: Dictionary) -> void`: Called to roll the node back to a
@@ -257,21 +259,24 @@ which will cause `SyncManager` to call various virtual methods on the node:
   old to the new state. This will only be called if "Interpolation" is
   enabled in project settings.
 
-- `_get_local_input() -> Dictionary`: Return the local input that this node
+- `_get_local_input() -> Dictionary`: Returns the local input that this node
   needs to operate. Not all nodes need input, in fact, most do not. This is
   used most commonly on the node representing a player. This input will
   be passed into `_network_process()`.
 
 - `_predict_remote_input(previous_input: Dictionary, ticks_since_real_input: int) -> Dictionary`:
-  Return predicted remote input based on the input from the previous tick,
+  Returns predicted remote input based on the input from the previous tick,
   which may itself be predicted. If this method isn't provided, the same
   input from the last tick will be used as-is.  This input will be passed
   into `_network_process()` when using predicted input.
 
-- `_network_process(input: Dictionary) -> void`: Process this node for the
+- `_network_process(input: Dictionary) -> void`: Processes this node for the
   current tick. The input will contain data from either `_get_local_input()`
   (if it's real user input) or `_predict_remote_input()` (if it's predicted).
   If this node doesn't implement those methods, it'll always be empty.
+
+  This method is meant to do what `_process()` or `_physics_process()` would
+  have done in most other Godot games.
  
 The following methods are only called on scenes that are spawned/de-spawned
 using `SyncManager.spawn()` and `SyncManager.despawn()`:
@@ -279,16 +284,22 @@ using `SyncManager.spawn()` and `SyncManager.despawn()`:
 - `_network_spawn_preprocess(data: Dictionary) -> Dictionary`: Pre-processes
   the data passed to `SyncManager.spawn()` before it gets passed to
   `_network_spawn()`. The modified data returned by this method is what will
-  get saved in state. This allows nodes to developer-friendly data in
+  get saved in state. This allows passing developer-friendly data to
   `SyncManager.spawn()` and this method can convert it into data that is
-  better to be stored in state.
+  safe to store in state.
+
+  For example, you may pass a `Node` object into `SyncManager.spawn()` and
+  this method could convert it into a `String` representing the node path.
+  This is important because storing a `Node` in state can cause weird
+  problems, because it could continue to change (or even get deleted!) by the
+  time that state needs to be loaded again.
 
 - `_network_spawn(data: Dictionary) -> void`: Called when a scene is spawned
   by `SyncManager.spawn()` or in rollback when this node needs to be
-  respawned (ex. when we rollback to a tick before this node was despawned).
+  re-spawned (ex. when we rollback to a tick before this node was de-spawned).
 
-- `_network_despawn() -> void`: Called when a node is despawned by
-  `SyncManager.despawn()` or in rollback when this node needs to be despawned
+- `_network_despawn() -> void`: Called when a node is de-spawned by
+  `SyncManager.despawn()` or in rollback when this node needs to be de-spawned
   (ex. when we rollback to a tick before this node was spawned).
 
 ### Project settings ###
@@ -304,8 +315,8 @@ plugin is enabled.
 - **Max Buffer Size**: The number of state frames to keep in the buffer. This
   defines the maximum number of ticks that the game can rollback.
 - **Ticks To Calculate Advantage**: The number of ticks we collect advantage
-  calculations from each peer before calculating an average, and possible
-  skipping some frames so other clients can catch up.
+  calculations from each peer before calculating an average, and possibly
+  skipping some frames so that other clients can catch up.
 - **Input Delay**: The number of frames of input delay.
 - **Ping Frequency**: The number of seconds between each ping.
 - **Interpolation**: If enabled, we'll do 1 tick of interpolation. This
@@ -324,7 +335,7 @@ plugin is enabled.
   don't manage to regain sync after this many ticks have been skipped, then
   `SyncManager` will emit "sync_error" and kill the match.
 - **Min Lag To Regain Sync**: If we've lost sync due to an input buffer
-  underrun, then `SyncManager` won't start running again, until the minimum
+  underrun, then `SyncManager` won't start running again until the minimum
   lag with all clients is above this value. This is to prevent the game
   immediately losing sync right after it has regained it, meaning it will
   pause a slightly longer time, to avoid a series of smaller pauses.
@@ -371,7 +382,8 @@ game!*
   offending message.
 - **Skip Nth Message**: If set, every nth message will not be sent. This is a
   quick way to simulate packet loss, but it isn't very accurate. System-level
-  tools or a proxy will always give more accurate results.
+  tools or a proxy that simulates packet loss will always make for more
+  accurate testing.
 - **Physics Process Msecs**: If `SyncManager._physics_process()` takes more
   than this many milliseconds, then an error will be pushed to the editor and
   console, including how long it actually took.
@@ -381,10 +393,11 @@ game!*
 
 #### Other important settings not under "Rollback": ####
 
-- **Physics** -> **Common** -> **Physics FPS**: Since the addon uses
+- **Physics** -> **Common** -> **Physics FPS**: Since `SyncManager` uses
   `_physics_process()` to run tick frames, this controls the simulation
   frequency. If you're using interpolation, it's best if this value can
-  evenly divide the rendering FPS.
+  evenly divide the rendering FPS, for example, if rendering at 60 fps,
+  then 60, 30, 20, or 10 are all good values.
 
 ### Adaptor classes ###
 
@@ -394,7 +407,7 @@ There are a few adaptor classes that can be used to modify the behavior of
 #### `NetworkAdaptor` ####
 
 All network communication from `SyncManager` passes through its
-`NetworkAdaptor`. The default implementation uses RPCs.
+`NetworkAdaptor`. The default implementation uses Godot RPCs.
 
 You can replace the network adaptor with your own class, in order to
 customize network communications.
@@ -424,12 +437,13 @@ to do it.
 #### `HashSerializer` ####
 
 The hash serializer will convert state or input into primitive types so that
-we can hash the Dictionary for use in comparisons.
+we can hash the Dictionary for use in comparisons. It is also used to convert
+*back* from these primitive types in the "Log inspector" tool.
 
-The default implementation can't handle Objects in a smart way, and if you
-include any in your input or state, it could lead to SyncManager thinking that
-input/state doesn't match, when it does. Replace this with your own
-implementation to convert any objects into a primitive type.
+The default implementation can't handle `Object`s in a smart way, so if you
+include any in your input or state, it could lead to `SyncManager` detecting
+a false state or input mismatch. Replace this with your own implementation to
+convert any of your objects into primitive types.
 
 **Parent class and default implementation:** `res://addons/godot-rollback-netcode/HashSerializer.gd`
 
@@ -439,7 +453,7 @@ The "Log Inspector" can be opened by clicking **Project** -> **Tools** ->
 **Log inspector...** in the Godot editor.
 
 It allows you to load the logs (generated by `SyncManager.start_logging()`)
-from all the clients in the match and examine the data in detail.
+from all the clients in a match and examine the data in detail.
 
 ![Screenshot of "Log Inspector" tool in the Godot editor](assets/screenshots/log_inspector.png)
 
@@ -451,20 +465,20 @@ and a "State/Input" view of the data.
 The "Frame" viewer shows data about each frame executed, including tick
 frames, interpolation frames and skipped frames. The x-axis is milliseconds
 since the match began. It uses the system clock of the computer the client
-ran on, so their clocks may not be synchronized. You can correct for this
-by adding or subtracting milliseconds from each peer on the "Settings" dialog.
+ran on, so data may not be line up correctly. You can correct for this
+by adding or subtracting milliseconds from each peer in the "Settings" dialog.
 
 You can click anywhere on the graph, and it will show all the data logged on
-the previous frame for each client in the lower part of the window. This data
-includes timing information, the number of rollbacks executed, messages
+the most recent frame for each client in the lower part of the window. This
+data includes timing information, the number of rollbacks executed, messages
 received and much more.
 
 If you click the "Previous frame" or "Next frame" buttons, the cursor will
 move forward or backward to the next frame on any peer.
 
-The errors connect from the tick when input was generated, to the frame when
+The arrows connect from the tick when input was generated, to the frame when
 the other peer receives that input. This gives a visual representation of the
-network traffic between those two peers. The pair of peers can be selected on
+network traffic between those two peers. The pair of peers can be selected in
 the "Settings" dialog.
 
 The orange line, represents the number of rollbacks performed on a given
@@ -501,14 +515,14 @@ addon:
 
 3. Initialize the match to its initial state on all clients. Sharing match
    configuration and letting the "host" know when each client is ready to
-   start can be done using Godot RPC mechanism.
+   start can be done using Godot's RPC mechanism.
 
-4. Call `SyncManager.start()` on the game's "host"
+4. Call `SyncManager.start()` on the "host".
 
 5. Begin the match in all clients in response to the "sync_started" signal.
 
-6. When the match is over, call `SyncManager.stop()` on the game's "host". (If
-   a client needs to leave the match early, they should inform the other
+6. When the match is over, call `SyncManager.stop()` on the "host". (If a
+   client needs to leave the match early, they should inform the other
    clients via an RPC or some other mechanism, and then call
    `SyncManager.stop()` locally.)
 
