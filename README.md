@@ -49,7 +49,7 @@ add it to the list!
 Overview
 --------
 
-This this is a quick overview of the different pieces that the addon includes.
+This is a quick overview of the different pieces that the addon includes.
 
 ### Singletons ###
 
@@ -94,11 +94,11 @@ section called "Virtual methods" below for more information.)
   All peers should be added before calling `SyncManager.start()`.
 
 - `start() -> void`: Starts synchronizing! This should only be called on the
-  "host" (ie. the peer with id 1), which will tell all the other clients to
-  start as well. It's after calling this that the "Virtual methods"
-  described below will start getting called.
+  "host" (the peer with id 1), which will tell all the other clients to start
+  as well. It's after calling this that the "Virtual methods" described below
+  will start getting called.
 
-- `stop() -> void`: Stops synchronizing. If called on the "host" (ie. the
+- `stop() -> void`: Stops synchronizing. If called on the "host" (the
   peer with id 1) it will tell all the clients to stop as well.
   
 - `clear_peers() -> void`: Clears the list of peers.
@@ -285,11 +285,11 @@ using `SyncManager.spawn()` and `SyncManager.despawn()`:
 
 - `_network_spawn(data: Dictionary) -> void`: Called when a scene is spawned
   by `SyncManager.spawn()` or in rollback when this node needs to be
-  respawned (ie. when we rollback to a tick before this node was despawned).
+  respawned (ex. when we rollback to a tick before this node was despawned).
 
 - `_network_despawn() -> void`: Called when a node is despawned by
   `SyncManager.despawn()` or in rollback when this node needs to be despawned
-  (ie. when we rollback to a tick before this node was spawned).
+  (ex. when we rollback to a tick before this node was spawned).
 
 ### Project settings ###
 
@@ -326,8 +326,8 @@ plugin is enabled.
 - **Min Lag To Regain Sync**: If we've lost sync due to an input buffer
   underrun, then `SyncManager` won't start running again, until the minimum
   lag with all clients is above this value. This is to prevent the game
-  immediately losing sync right after it has regained it, ie. pausing for
-  a slightly longer time, to avoid a series of smaller pauses.
+  immediately losing sync right after it has regained it, meaning it will
+  pause a slightly longer time, to avoid a series of smaller pauses.
 - **Max State Mismatch Count**: If more than this many state mismatches are
   detected in a row, it's considered a fatal state mismatch, and
   `SyncManager` will emit "sync_error" and kill the match.
@@ -412,7 +412,7 @@ which can be found at `res://addons/godot-rollback-network/NakamaWebRTCNetworkAd
 The message serializer will convert input messages to bytes for sending to
 the other clients.
 
-The default implementation is relatively wasteful (ie. it will likely lead to
+The default implementation is relatively wasteful (it will likely lead to
 messages exceeding the [MTU](https://en.wikipedia.org/wiki/Maximum_transmission_unit))
 so you will **ALMOST ALWAYS** want to replace it with your own implementation
 that can pack the data as small as possible. This can only be done by knowing
