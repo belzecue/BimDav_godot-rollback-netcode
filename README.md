@@ -222,7 +222,7 @@ This addon include a few rollback-aware node types:
   supports rollback.
 
   If `auto_reset` is set to true, it will automatically play the "RESET"
-  animation everytime state is loaded without an animation playing. This can
+  animation every time state is loaded without an animation playing. This can
   help prevent issues where an animation started, but on rollback it's
   determined that it shouldn't have started, so the animation is left in an
   in-between state.
@@ -241,7 +241,7 @@ This addon include a few rollback-aware node types:
   generates all the other seeds the game needs. I like to call this the
   "Johnny Appleseed approach" where "Johnny" is distributing seeds grown from
   the "mother seed". This will work so long as the nodes are always initialized
-  in a deteriministic order!
+  in a deterministic order!
 
 ### Virtual methods ###
 
@@ -345,8 +345,8 @@ plugin is enabled.
 
 **Spawn Manager:**
 
-- **Reuse Despawned Nodes**: If enabled, despawned nodes will be reused
-  rather than instancing the scene everytime. This is can provide a large
+- **Reuse Despawned Nodes**: If enabled, de-spawned nodes will be reused
+  rather than instancing the scene every time. This is can provide a large
   performance boost, but it requires the developer to carefully reset state
   during `_network_despawn()`.
 
@@ -416,7 +416,7 @@ customize network communications.
 
 **Default implementation:** `res://addons/godot-rollback-network/RPCNetworkAdaptor.gd`
 
-There is an additional implemetation included to integrate with the
+There is an additional implementation included to integrate with the
 [WebRTC and Nakama addon for Godot](https://gitlab.com/snopek-games/godot-nakama-webrtc)
 which can be found at `res://addons/godot-rollback-network/NakamaWebRTCNetworkAdaptor.gd`.
 
