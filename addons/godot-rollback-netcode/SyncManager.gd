@@ -240,7 +240,8 @@ func _ready() -> void:
 	for property_name in project_settings:
 		var setting_name = project_settings[property_name]
 		if ProjectSettings.has_setting(setting_name):
-			set(property_name, ProjectSettings.get_setting(setting_name))
+			if (not setting_name.begins_with("debug")) or OS.is_debug_build():
+				set(property_name, ProjectSettings.get_setting(setting_name))
 	
 	_ping_timer = Timer.new()
 	_ping_timer.name = "PingTimer"
