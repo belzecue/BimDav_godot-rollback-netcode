@@ -203,6 +203,7 @@ var _in_rollback := false
 var _ran_physics_process := false
 var _ticks_since_last_interpolation_frame := 0
 var _debug_check_local_state_consistency_buffer := []
+var _interpolation_is_forward_state_restored := true
 
 signal sync_started ()
 signal sync_stopped ()
@@ -993,10 +994,13 @@ func _physics_process(_delta: float) -> void:
 		if debug_rollback_ticks > 0 and current_tick >= debug_rollback_ticks:
 			rollback_ticks = max(rollback_ticks, debug_rollback_ticks)
 		
-		# We need to resimulate the current tick since we did a partial rollback
-		# to the previous tick in order to interpolate.
-		if interpolation and current_tick > 1:
-			rollback_ticks = max(rollback_ticks, 1)
+	# We need to resimulate the current tick since we did a partial rollback
+	# to the previous tick in order to interpolate.
+	# This should have already been done in _process(), but if not let's do
+	# it here to avoid desyncs.
+	if interpolation and not _interpolation_is_forward_state_restored and rollback_ticks == 0:
+		_call_load_state(state_buffer[-1].data)
+	_interpolation_is_forward_state_restored = true
 	
 	if rollback_ticks > 0:
 		if _logger:
@@ -1178,6 +1182,7 @@ func _physics_process(_delta: float) -> void:
 			# Return to state from the previous frame, so we can interpolate
 			# towards the state of the current frame.
 			_call_load_state(state_buffer[-2].data)
+			_interpolation_is_forward_state_restored = false
 	
 	_time_since_last_tick = 0.0
 	_ran_physics_process = true
@@ -1209,6 +1214,9 @@ func _process(delta: float) -> void:
 		# Don't interpolate if we are skipping ticks, or just ran physics process.
 		if interpolation and skip_ticks == 0 and not _ran_physics_process:
 			var weight: float = _time_since_last_tick / tick_time
+			if weight > 0.5 and not _interpolation_is_forward_state_restored:
+				_call_load_state(state_buffer[-1].data)
+				_interpolation_is_forward_state_restored = true
 			if weight > 1.0:
 				weight = 1.0
 			_call_interpolate_state(weight)
