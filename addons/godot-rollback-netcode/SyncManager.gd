@@ -474,14 +474,7 @@ func _handle_fatal_error(msg: String):
 	return null
 
 func _call_get_local_input() -> Dictionary:
-	var input := {}
-	var nodes: Array = get_tree().get_nodes_in_group('network_sync')
-	for node in nodes:
-		if network_adaptor.is_network_master_for_node(node) and node.has_method('_get_local_input') and node.is_inside_tree() and not node.is_queued_for_deletion():
-			var node_input = node._get_local_input()
-			if node_input.size() > 0:
-				input[str(node.get_path())] = node_input
-	return input
+	return hash_serializer.call_get_local_input()
 
 func _call_network_process(input_frame: InputBufferFrame) -> void:
 	hash_serializer.call_network_process(input_frame)
@@ -588,7 +581,12 @@ func _do_tick(is_rollback: bool = false) -> bool:
 	
 	assert(input_frame != null, "Input frame for current_tick is null")
 	
-	input_frame = _predict_missing_input(input_frame, previous_frame)
+	var peers_ticks_since_real_input = {}
+	for peer_id in peers:
+		var peer: Peer = peers[peer_id]
+		peers_ticks_since_real_input[peer_id] = -1 if peer.last_remote_input_tick_received == 0 \
+		 else current_tick - peer.last_remote_input_tick_received
+	input_frame = hash_serializer.call_predict_missing_input(peers_ticks_since_real_input, input_frame, previous_frame)
 	
 	_call_network_process(input_frame)
 	
