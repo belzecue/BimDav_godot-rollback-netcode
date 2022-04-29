@@ -4,7 +4,6 @@ const SpawnManager = preload("res://addons/godot-rollback-netcode/SpawnManager.g
 const SoundManager = preload("res://addons/godot-rollback-netcode/SoundManager.gd")
 const NetworkAdaptor = preload("res://addons/godot-rollback-netcode/NetworkAdaptor.gd")
 const MessageSerializer = preload("res://addons/godot-rollback-netcode/MessageSerializer.gd")
-const HashSerializer = preload("res://addons/godot-rollback-netcode/HashSerializer.gd")
 const Logger = preload("res://addons/godot-rollback-netcode/Logger.gd")
 const DebugStateComparer = preload("res://addons/godot-rollback-netcode/DebugStateComparer.gd")
 
@@ -54,44 +53,6 @@ class Peer extends Reference:
 		local_lag = 0
 		clear_advantage()
 
-class InputForPlayer:
-	var input := {}
-	var predicted: bool
-	
-	func _init(_input: Dictionary, _predicted: bool) -> void:
-		input = _input
-		predicted = _predicted
-
-class InputBufferFrame:
-	var tick: int
-	var players := {}
-	
-	func _init(_tick: int) -> void:
-		tick = _tick
-	
-	func get_player_input(peer_id: int) -> Dictionary:
-		if players.has(peer_id):
-			return players[peer_id].input
-		return {}
-	
-	func is_player_input_predicted(peer_id: int) -> bool:
-		if players.has(peer_id):
-			return players[peer_id].predicted
-		return true
-	
-	func get_missing_peers(peers: Dictionary) -> Array:
-		var missing := []
-		for peer_id in peers:
-			if not players.has(peer_id) or players[peer_id].predicted:
-				missing.append(peer_id)
-		return missing
-	
-	func is_complete(peers: Dictionary) -> bool:
-		for peer_id in peers:
-			if not players.has(peer_id) or players[peer_id].predicted:
-				return false
-		return true
-
 class StateBufferFrame:
 	var tick: int
 	var data: Dictionary
@@ -136,11 +97,10 @@ class StateHashFrame:
 
 const DEFAULT_NETWORK_ADAPTOR_PATH := "res://addons/godot-rollback-netcode/RPCNetworkAdaptor.gd"
 const DEFAULT_MESSAGE_SERIALIZER_PATH := "res://addons/godot-rollback-netcode/MessageSerializer.gd"
-const DEFAULT_HASH_SERIALIZER_PATH := "res://addons/godot-rollback-netcode/HashSerializer.gd"
 
 var network_adaptor: NetworkAdaptor setget set_network_adaptor
 var message_serializer: MessageSerializer setget set_message_serializer
-var hash_serializer: HashSerializer setget set_hash_serializer
+var hash_serializer: = HashSerializer.new()
 
 var peers := {}
 var input_buffer := []
@@ -192,7 +152,6 @@ var _state_hashes_start_tick: int
 var _input_send_queue := []
 var _input_send_queue_start_tick: int
 var _ticks_spent_regaining_sync := 0
-var _interpolation_state := {}
 var _time_since_last_tick := 0.0
 var _debug_skip_nth_message_counter := 0
 var _input_complete_tick := 0
@@ -284,12 +243,12 @@ func _ready() -> void:
 	add_child(_sound_manager)
 	_sound_manager.setup_sound_manager(self)
 	
+	add_child(hash_serializer)
+	
 	if network_adaptor == null:
 		reset_network_adaptor()
 	if message_serializer == null:
 		set_message_serializer(_create_class_from_project_settings('network/rollback/classes/message_serializer', DEFAULT_MESSAGE_SERIALIZER_PATH))
-	if hash_serializer == null:
-		set_hash_serializer(_create_class_from_project_settings('network/rollback/classes/hash_serializer', DEFAULT_HASH_SERIALIZER_PATH))
 
 func _set_readonly_variable(_value) -> void:
 	pass
@@ -332,10 +291,6 @@ func reset_network_adaptor() -> void:
 func set_message_serializer(_message_serializer: MessageSerializer) -> void:
 	assert(not started, "Changing the message serializer after SyncManager has started will probably break everything")
 	message_serializer = _message_serializer
-
-func set_hash_serializer(_hash_serializer: HashSerializer) -> void:
-	assert(not started, "Changing the hash serializer after SyncManager has started will probably break everything")
-	hash_serializer = _hash_serializer
 
 func set_mechanized(_mechanized: bool) -> void:
 	assert(not started, "Changing the mechanized flag after SyncManager has started will probably break everything")
@@ -470,7 +425,6 @@ func _reset() -> void:
 	_input_send_queue.clear()
 	_input_send_queue_start_tick = 1
 	_ticks_spent_regaining_sync = 0
-	_interpolation_state.clear()
 	_time_since_last_tick = 0.0
 	_debug_skip_nth_message_counter = 0
 	_input_complete_tick = 0
@@ -530,66 +484,17 @@ func _call_get_local_input() -> Dictionary:
 	return input
 
 func _call_network_process(input_frame: InputBufferFrame) -> void:
-	var nodes: Array = get_tree().get_nodes_in_group('network_sync')
-	var process_nodes := []
-	var postprocess_nodes := []
-	
-	# Call _network_preprocess() and collect list of nodes with the other
-	# virtual methods.
-	var i = nodes.size()
-	while i > 0:
-		i -= 1
-		var node = nodes[i]
-		if node.is_inside_tree() and not node.is_queued_for_deletion():
-			if node.has_method('_network_preprocess'):
-				var player_input = input_frame.get_player_input(node.get_network_master())
-				node._network_preprocess(player_input.get(str(node.get_path()), {}))
-			if node.has_method('_network_process'):
-				process_nodes.append(node)
-			if node.has_method('_network_postprocess'):
-				postprocess_nodes.append(node)
-	
-	# Call _network_process().
-	for node in process_nodes:
-		if node.is_inside_tree() and not node.is_queued_for_deletion():
-			var player_input = input_frame.get_player_input(node.get_network_master())
-			node._network_process(player_input.get(str(node.get_path()), {}))
-	
-	# Call _network_postprocess().
-	for node in postprocess_nodes:
-		if node.is_inside_tree() and not node.is_queued_for_deletion():
-			var player_input = input_frame.get_player_input(node.get_network_master())
-			node._network_postprocess(player_input.get(str(node.get_path()), {}))
+	hash_serializer.call_network_process(input_frame)
 
 func _call_save_state() -> Dictionary:
-	var state := {}
-	var nodes: Array = get_tree().get_nodes_in_group('network_sync')
-	for node in nodes:
-		if node.has_method('_save_state') and node.is_inside_tree() and not node.is_queued_for_deletion():
-			var node_path = str(node.get_path())
-			if node_path != "":
-				state[node_path] = node._save_state()
-	
-	return state
+	return hash_serializer.call_save_state()
 
 func _call_load_state(state: Dictionary) -> void:
-	for node_path in state:
-		if node_path == '$':
-			continue
-		var node = get_node_or_null(node_path)
-		assert(node != null, "Unable to restore state to missing node: %s" % node_path)
-		if node and node.has_method('_load_state'):
-			node._load_state(state[node_path])
+	hash_serializer.call_load_state(state)
 
 func _call_interpolate_state(weight: float) -> void:
-	for node_path in _interpolation_state:
-		if node_path == '$':
-			continue
-		var node = get_node_or_null(node_path)
-		if node:
-			if node.has_method('_interpolate_state'):
-				var states = _interpolation_state[node_path]
-				node._interpolate_state(states[0], states[1], weight)
+	if not state_buffer.empty():
+		hash_serializer.call_interpolate_state(state_buffer[-2].data, state_buffer[-1].data, weight)
 
 func _save_current_state() -> void:
 	assert(current_tick >= 0, "Attempting to store state for negative tick")
@@ -613,7 +518,7 @@ func _update_input_complete_tick() -> void:
 			break
 		
 		if _logger:
-			_logger.write_input(input_frame.tick, input_frame.players)
+			_logger.write_input(input_frame.tick, input_frame.get_players())
 		
 		_input_complete_tick += 1
 		
@@ -705,13 +610,15 @@ func _do_tick(is_rollback: bool = false) -> bool:
 func _get_or_create_input_frame(tick: int) -> InputBufferFrame:
 	var input_frame: InputBufferFrame
 	if input_buffer.size() == 0:
-		input_frame = InputBufferFrame.new(tick)
+		input_frame = InputBufferFrame.new()
+		input_frame.tick = tick
 		input_buffer.append(input_frame)
 	elif tick > input_buffer[-1].tick:
 		var highest = input_buffer[-1].tick
 		while highest < tick:
 			highest += 1
-			input_frame = InputBufferFrame.new(highest)
+			input_frame = InputBufferFrame.new()
+			input_frame.tick = highest
 			input_buffer.append(input_frame)
 	else:
 		input_frame = get_input_frame(tick)
@@ -1145,7 +1052,7 @@ func _physics_process(_delta: float) -> void:
 		
 		var local_input = _call_get_local_input()
 		_calculate_data_hash(local_input)
-		input_frame.players[network_adaptor.get_network_unique_id()] = InputForPlayer.new(local_input, false)
+		input_frame.add_input_for_player(network_adaptor.get_network_unique_id(), local_input, false)
 		
 		# Only serialize and send input when we have real remote peers.
 		if peers.size() > 0:
@@ -1173,14 +1080,6 @@ func _physics_process(_delta: float) -> void:
 			_logger.stop_timing("current_tick")
 		
 		if interpolation:
-			# Capture the state data to interpolate between.
-			var to_state: Dictionary = state_buffer[-1].data
-			var from_state: Dictionary = state_buffer[-2].data
-			_interpolation_state.clear()
-			for path in to_state:
-				if from_state.has(path):
-					_interpolation_state[path] = [from_state[path], to_state[path]]
-			
 			# Return to state from the previous frame, so we can interpolate
 			# towards the state of the current frame.
 			_call_load_state(state_buffer[-2].data)
@@ -1247,25 +1146,6 @@ func _process(delta: float) -> void:
 	if debug_process_msecs > 0 and total_time_msecs > debug_process_msecs:
 		push_error("[%s] SyncManager._process() took %.02fms" % [current_tick, total_time_msecs])
 
-func _clean_data_for_hashing(input: Dictionary) -> Dictionary:
-	var cleaned := {}
-	for path in input:
-		if path == '$':
-			continue
-		cleaned[path] = _clean_data_for_hashing_recursive(input[path])
-	return cleaned
-
-func _clean_data_for_hashing_recursive(input: Dictionary) -> Dictionary:
-	var cleaned := {}
-	for key in input:
-		if (key is String and key.begins_with('_')) or (key is int and key < 0):
-			continue
-		var value = input[key]
-		if value is Dictionary:
-			cleaned[key] = _clean_data_for_hashing_recursive(value)
-		else:
-			cleaned[key] = value
-	return cleaned
 
 # Calculates the hash without any keys that start with '_' (if string)
 # or less than 0 (if integer) to allow some properties to not count when
@@ -1275,9 +1155,7 @@ func _clean_data_for_hashing_recursive(input: Dictionary) -> Dictionary:
 # input and real input from causing a rollback) and state (for when a property
 # is only used for interpolation).
 func _calculate_data_hash(input: Dictionary) -> int:
-	var cleaned = _clean_data_for_hashing(input)
-	var serialized = hash_serializer.serialize(cleaned)
-	var serialized_hash = serialized.hash()
+	var serialized_hash: = input.hash_special()
 	input['$'] = serialized_hash
 	return serialized_hash
 
@@ -1344,7 +1222,7 @@ func _on_received_input_tick(peer_id: int, serialized_msg: PoolByteArray) -> voi
 			if tick_delta >= 0 and rollback_ticks <= tick_delta:
 				# Grab our predicted input, and store the remote input.
 				var local_input = input_frame.get_player_input(peer_id)
-				input_frame.players[peer_id] = InputForPlayer.new(remote_input, false)
+				input_frame.add_input_for_player(peer_id, remote_input, false)
 				
 				# Check if the remote input matches what we had predicted, if not,
 				# flag that we need to rollback.
@@ -1354,7 +1232,7 @@ func _on_received_input_tick(peer_id: int, serialized_msg: PoolByteArray) -> voi
 					emit_signal("rollback_flagged", remote_tick)
 			else:
 				# Otherwise, just store it.
-				input_frame.players[peer_id] = InputForPlayer.new(remote_input, false)
+				input_frame.add_input_for_player(peer_id, remote_input, false)
 		
 		# Find what the last remote tick we received was after filling these in.
 		var index = (peer.last_remote_input_tick_received - _input_buffer_start_tick) + 1
@@ -1398,7 +1276,7 @@ func _process_mechanized_input() -> void:
 		for tick in peer_input:
 			var input = peer_input[tick]
 			var input_frame := _get_or_create_input_frame(int(tick))
-			input_frame.players[int(peer_id)] = InputForPlayer.new(input, false)
+			input_frame.add_input_for_player(int(peer_id), input, false)
 
 func execute_mechanized_tick() -> void:
 	_process_mechanized_input()

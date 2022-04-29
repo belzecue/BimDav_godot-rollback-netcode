@@ -137,7 +137,7 @@ func write_input(tick: int, input: Dictionary) -> void:
 		input = {},
 	}
 	for key in input.keys():
-		data_to_write['input'][key] = SyncManager.hash_serializer.serialize(input[key].input.duplicate(true))
+		data_to_write['input'][key] = SyncManager.hash_serializer.serialize(input[key][0].duplicate(true))
 	
 	_writer_thread_mutex.lock()
 	_write_queue.push_back(data_to_write)
