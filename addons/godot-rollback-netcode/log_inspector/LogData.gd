@@ -87,6 +87,7 @@ var end_time: int
 var match_info := {}
 var input := {}
 var state := {}
+var events := {}
 var frames := {}
 
 var peer_time_offsets := {}
@@ -96,6 +97,7 @@ var peer_end_times := {}
 var _is_loading := false
 var _loader_thread: Thread
 var _loader_mutex: Mutex
+var _events_scripts := {}
 
 signal load_progress (current, total)
 signal load_finished ()
@@ -119,6 +121,7 @@ func clear() -> void:
 	match_info.clear()
 	input.clear()
 	state.clear()
+	events.clear()
 	frames.clear()
 	peer_time_offsets.clear()
 
@@ -238,6 +241,19 @@ func _add_log_entry(log_entry: Dictionary, peer_id: int) -> void:
 				if not state_data.compare_state(peer_id, log_entry['state']) and not tick in mismatches:
 					mismatches.append(tick)
 		
+		Logger.LogType.EVENT:
+			var event = log_entry['event']
+			for path in event.keys():
+				if path == "":
+					for e in event[path]:
+						if e.type == "script":
+							_events_scripts[e.node_path] = load(e.script_path)
+				else:
+					if not events.has(path):
+						events[path] = {}
+						
+					events[path][tick] = event[path]
+		
 		Logger.LogType.FRAME:
 			log_entry.erase('log_type')
 			var frame_number = frame_counter[peer_id]
@@ -331,3 +347,13 @@ func get_frame_by_time(peer_id: int, time: int) -> FrameData:
 		return last_matching_frame.clone_with_offset(peer_time_offset)
 	
 	return last_matching_frame
+
+func get_events_up_to_tick(tick_number: int) -> Dictionary:
+	var res := {}
+	for path in events.keys():
+		var script = _events_scripts[path]
+		if not script:
+			push_error("Script of the event sending Node can't be found")
+		res[path] = script._prepare_events_up_to_tick(tick_number, events[path])
+	return res
+	

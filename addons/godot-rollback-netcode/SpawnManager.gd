@@ -63,25 +63,25 @@ func _instance_scene(scene: PackedScene) -> Node:
 	if retired_nodes.has(resource_path):
 		var nodes: Array = retired_nodes[resource_path]
 		var node: Node
-		
+
 		while nodes.size() > 0:
 			node = retired_nodes[resource_path].pop_front()
 			if is_instance_valid(node) and not node.is_queued_for_deletion():
 				break
 			else:
 				node = null
-		
+
 		if nodes.size() == 0:
 			retired_nodes.erase(resource_path)
-		
+
 		if node:
 			#print ("Reusing %s" % resource_path)
 			return node
-	
+
 	#print ("Instancing new %s" % resource_path)
 	return scene.instance()
 
-func spawn(name: String, parent: Node, scene: PackedScene, rename: bool = true) -> Node:
+func spawn(name: String, parent: Node, scene: PackedScene, rename: bool = true) -> NetworkSpawnedNode:
 	var spawned_node = _instance_scene(scene)
 	if rename:
 		name = _rename_node(name)
@@ -95,14 +95,14 @@ func spawn(name: String, parent: Node, scene: PackedScene, rename: bool = true) 
 		parent = parent.get_path(),
 		scene = scene.resource_path,
 	}
-	
+
 	var node_path = str(spawned_node.get_path())
 	spawn_records[node_path] = spawn_record
 	spawned_nodes[node_path] = spawned_node
-	
+
 	#print ("[%s] spawned: %s" % [SyncManager.current_tick, spawned_node.name])
-	
-	return spawned_node
+
+	return NetworkSpawnedNode.new(spawned_node, self)
 
 func despawn(node: Node) -> void:
 	if node.has_signal("despawned"):
@@ -214,11 +214,39 @@ func _load_state(state: Dictionary) -> void:
 func _load_state_forward(state: Dictionary) -> void:
 	for node_path in state.spawn_records.keys():
 		if not spawned_nodes.has(node_path):
-			var spawned_node = _instance_scene(load(state.spawn_records.scene))
-			var name = state.spawn_records.name
-			var parent = get_node(state.spawn_records.parent)
+			var spawn_record = state.spawn_records[node_path]
+			var spawned_node = _instance_scene(load(spawn_record.scene))
+			var name = spawn_record.name
+			var parent = get_node(spawn_record.parent)
 			_remove_colliding_node(name, parent)
 			spawned_node.name = name
+			spawned_nodes[node_path] = spawned_node
 			parent.add_child(spawned_node)
 			_alphabetize_children(parent)
 	_load_state(state)
+
+func _load_events(events: Dictionary) -> void:
+	for path in events.keys():
+		var node = get_node_or_null(path)
+		if node:
+			for e in events[path]:
+				if e['type'] == "callv":
+					node.callv(e['method_name'], e['args'])
+				elif e['type'] == "set":
+					node.set(e['property_name'], e['value'])
+
+static func _prepare_events_up_to_tick(tick_number: int, events: Dictionary) -> Dictionary:
+	# only keep the last tick for each node
+	var prepared_events := {}
+	for t in events.keys():
+		# Only load up to the asked tick
+		if t > tick_number:
+			break
+		var new_event = events[t]
+		for e in new_event:
+			var path = e['caller']
+			prepared_events[path] = []
+		for e in new_event:
+			var path = e['caller']
+			prepared_events[path].append(e)
+	return prepared_events
