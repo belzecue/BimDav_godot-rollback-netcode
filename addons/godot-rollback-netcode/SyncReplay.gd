@@ -93,7 +93,8 @@ func process_message(msg: Dictionary) -> void:
 		
 		"load_state":
 			var state = msg.get('state', {})
-			_do_load_state(state)
+			var events = msg.get('events', {})
+			_do_load_state(state, events)
 			
 		_:
 			push_error("SyncReplay message has unknown type: %s" % type)
@@ -128,6 +129,7 @@ func _do_setup_match2(my_peer_id: int, peer_ids: Array, match_info: Dictionary) 
 
 	SyncManager.start()
 
-func _do_load_state(state: Dictionary) -> void:
+func _do_load_state(state: Dictionary, events: Dictionary) -> void:
 	state = SyncManager.hash_serializer.unserialize(state)
-	SyncManager._call_load_state(state)
+	events = SyncManager.hash_serializer.unserialize(events)
+	SyncManager._call_load_state_forward(state, events)
