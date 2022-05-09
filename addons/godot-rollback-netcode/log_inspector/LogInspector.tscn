@@ -25,12 +25,12 @@ margin_left = -400.0
 margin_top = -300.0
 margin_right = 400.0
 margin_bottom = 300.0
-window_title = "Open File(s)"
+window_title = "Ouvrir un ou plusieurs fichiers"
 mode = 1
 access = 2
 filters = PoolStringArray( "*.log ; Log files" )
-current_dir = "/home/dsnopek/.local/share/godot/app_userdata/Godot Rollback Netcode Demo/detailed_logs/"
-current_path = "/home/dsnopek/.local/share/godot/app_userdata/Godot Rollback Netcode Demo/detailed_logs/"
+current_dir = "/Users/Shadow/AppData/Roaming/Godot/app_userdata/Rollback Tutorial/detailed_logs"
+current_path = "/Users/Shadow/AppData/Roaming/Godot/app_userdata/Rollback Tutorial/detailed_logs/"
 __meta__ = {
 "_edit_use_anchors_": false
 }

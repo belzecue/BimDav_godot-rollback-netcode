@@ -140,6 +140,14 @@ enum LoadType {
 	INTERPOLATION_FORWARD,
 }
 
+class EventBufferFrame:
+	var tick: int
+	var data: Dictionary
+
+	func _init(_tick, _data) -> void:
+		tick = _tick
+		data = _data
+
 const DEFAULT_NETWORK_ADAPTOR_PATH := "res://addons/godot-rollback-netcode/RPCNetworkAdaptor.gd"
 const DEFAULT_MESSAGE_SERIALIZER_PATH := "res://addons/godot-rollback-netcode/MessageSerializer.gd"
 const DEFAULT_HASH_SERIALIZER_PATH := "res://addons/godot-rollback-netcode/HashSerializer.gd"
@@ -153,6 +161,7 @@ var input_buffer := []
 var state_buffer := []
 var state_hashes := []
 
+var event_buffer := []
 var mechanized := false setget set_mechanized
 var mechanized_input_received := {}
 var mechanized_rollback_ticks := 0
@@ -210,6 +219,8 @@ var _in_rollback := false
 var _ran_physics_process := false
 var _ticks_since_last_interpolation_frame := 0
 var _debug_check_local_state_consistency_buffer := []
+var _current_event_buffer_frame_data := {}
+var _event_scripts := {}
 
 signal sync_started ()
 signal sync_stopped ()
@@ -469,6 +480,7 @@ func _reset() -> void:
 	input_buffer.clear()
 	state_buffer.clear()
 	state_hashes.clear()
+	event_buffer.clear()
 	_input_buffer_start_tick = 1
 	_state_buffer_start_tick = 0
 	_state_hashes_start_tick = 1
@@ -587,7 +599,7 @@ func _call_load_state(state: Dictionary, type: int) -> void:
 		if node and node.has_method('_load_state'):
 			node._load_state(state[node_path])
 
-func _call_load_state_forward(state: Dictionary) -> void:
+func _call_load_state_forward(state: Dictionary, events: Dictionary) -> void:
 	for node_path in state:
 		if node_path == '$':
 			continue
@@ -598,6 +610,8 @@ func _call_load_state_forward(state: Dictionary) -> void:
 				node._load_state_forward(state[node_path])
 			elif node.has_method('_load_state'):
 				node._load_state(state[node_path])
+			if events.has(node_path) and node.has_method('_load_events'):
+				node._load_events(events[node_path])
 
 func _call_interpolate_state(weight: float) -> void:
 	for node_path in _interpolation_state:
@@ -615,6 +629,7 @@ func _save_current_state() -> void:
 		return
 	
 	state_buffer.append(StateBufferFrame.new(current_tick, _call_save_state()))
+	event_buffer.append(EventBufferFrame.new(current_tick, _current_event_buffer_frame_data))
 	
 	# If the input for this state is complete, then update _state_complete_tick.
 	if _input_complete_tick > _state_complete_tick:
@@ -658,6 +673,8 @@ func _update_state_hashes() -> void:
 		state_hashes.append(StateHashFrame.new(_last_state_hashed_tick, state_hash))
 		
 		if _logger:
+			var serialized_events = SyncManager.hash_serializer.serialize(_get_event_frame(_last_state_hashed_tick).data)
+			_logger.write_event(_last_state_hashed_tick, serialized_events)
 			_logger.write_state(_last_state_hashed_tick, state_frame.data)
 
 func _predict_missing_input(input_frame: InputBufferFrame, previous_frame: InputBufferFrame) -> InputBufferFrame:
@@ -698,6 +715,7 @@ func _predict_missing_input(input_frame: InputBufferFrame, previous_frame: Input
 func _do_tick(is_rollback: bool = false) -> bool:
 	var input_frame := get_input_frame(current_tick)
 	var previous_frame := get_input_frame(current_tick - 1)
+	_current_event_buffer_frame_data = {}
 	
 	assert(input_frame != null, "Input frame for current_tick is null")
 	
@@ -773,6 +791,7 @@ func _cleanup_buffers() -> bool:
 			return false
 		
 		state_buffer.pop_front()
+		event_buffer.pop_front()
 		_state_buffer_start_tick += 1
 		
 		emit_signal("tick_retired", state_frame_to_retire.tick)
@@ -841,6 +860,16 @@ func _get_state_frame(tick: int) -> StateBufferFrame:
 	var state_frame = state_buffer[index]
 	assert(state_frame.tick == tick, "State frame retreived from state buffer has mismatched tick number")
 	return state_frame
+
+func _get_event_frame(tick: int) -> EventBufferFrame:
+	if tick < _state_buffer_start_tick:
+		return null
+	var index = tick - _state_buffer_start_tick
+	if index >= event_buffer.size():
+		return null
+	var event_frame = event_buffer[index]
+	assert(event_frame.tick == tick, "Event frame retreived from event buffer has mismatched tick number")
+	return event_frame
 
 func _get_state_hash_frame(tick: int) -> StateHashFrame:
 	if tick < _state_hashes_start_tick:
@@ -1048,6 +1077,7 @@ func _physics_process(_delta: float) -> void:
 				_debug_check_consistent_local_state(state, "Loaded")
 		
 		state_buffer.resize(state_buffer.size() - rollback_ticks)
+		event_buffer.resize(event_buffer.size() - rollback_ticks)
 		
 		# Invalidate sync ticks after this, they may be asked for again
 		if requested_input_complete_tick > 0 and current_tick >= requested_input_complete_tick:
@@ -1495,3 +1525,21 @@ func _debug_check_consistent_local_state(state: StateBufferFrame, message := "Lo
 			message,
 			comparer.print_mismatches(),
 			])
+
+func register_event(node: Node, data: Dictionary) -> void:
+	var path := str(node.get_path())
+	
+	if not _event_scripts.has(path):
+		_event_scripts[path] = node.get_script().resource_path
+		if not _current_event_buffer_frame_data.has(""):
+			_current_event_buffer_frame_data[""] = []
+		_current_event_buffer_frame_data[""].append({
+			type = "script",
+			node_path = path,
+			script_path = _event_scripts[path]
+		})
+	
+	if not _current_event_buffer_frame_data.has(path):
+		_current_event_buffer_frame_data[path] = []
+	
+	_current_event_buffer_frame_data[path].append(data)
