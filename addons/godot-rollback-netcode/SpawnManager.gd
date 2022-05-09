@@ -4,31 +4,31 @@ const REUSE_DESPAWNED_NODES_SETTING := 'network/rollback/spawn_manager/reuse_des
 
 var spawn_records := {}
 var spawned_nodes := {}
-var node_scenes := {}
 var retired_nodes := {}
+var interpolation_nodes := {}
 var counter := {}
+var waiting_before_remove: = {}
+var ticks_before_remove: = 20
 
 var reuse_despawned_nodes := false
-
-var is_respawning := false
-
-signal scene_spawned (name, spawned_node, scene, data)
-signal scene_despawned (name, node)
 
 func _ready() -> void:
 	if ProjectSettings.has_setting(REUSE_DESPAWNED_NODES_SETTING):
 		reuse_despawned_nodes = ProjectSettings.get_setting(REUSE_DESPAWNED_NODES_SETTING)
+	ticks_before_remove = ProjectSettings.get_setting("network/rollback/max_buffer_size")
 	
 	add_to_group('network_sync')
 
 func reset() -> void:
 	spawn_records.clear()
-	node_scenes.clear()
 	counter.clear()
+	waiting_before_remove.clear()
 	
 	for node in spawned_nodes.values():
 		node.queue_free()
 	spawned_nodes.clear()
+	
+	interpolation_nodes.clear()
 	
 	for nodes in retired_nodes.values():
 		for node in nodes:
@@ -58,7 +58,8 @@ func _alphabetize_children(parent: Node) -> void:
 		var child = children[index]
 		parent.move_child(child, index)
 
-func _instance_scene(resource_path: String) -> Node:
+func _instance_scene(scene: PackedScene) -> Node:
+	var resource_path: = scene.resource_path
 	if retired_nodes.has(resource_path):
 		var nodes: Array = retired_nodes[resource_path]
 		var node: Node
@@ -78,13 +79,10 @@ func _instance_scene(resource_path: String) -> Node:
 			return node
 	
 	#print ("Instancing new %s" % resource_path)
-	var scene = load(resource_path)
 	return scene.instance()
 
-func spawn(name: String, parent: Node, scene: PackedScene, data: Dictionary, rename: bool = true, signal_name: String = '') -> Node:
-	var spawned_node = _instance_scene(scene.resource_path)
-	if signal_name == '':
-		signal_name = name
+func spawn(name: String, parent: Node, scene: PackedScene, rename: bool = true) -> Node:
+	var spawned_node = _instance_scene(scene)
 	if rename:
 		name = _rename_node(name)
 	_remove_colliding_node(name, parent)
@@ -92,119 +90,135 @@ func spawn(name: String, parent: Node, scene: PackedScene, data: Dictionary, ren
 	parent.add_child(spawned_node)
 	_alphabetize_children(parent)
 	
-	if spawned_node.has_method('_network_spawn_preprocess'):
-		data = spawned_node._network_spawn_preprocess(data)
-	
-	if spawned_node.has_method('_network_spawn'):
-		spawned_node._network_spawn(data)
-	
 	var spawn_record := {
 		name = spawned_node.name,
 		parent = parent.get_path(),
 		scene = scene.resource_path,
-		data = data,
-		signal_name = signal_name,
 	}
-	
-	spawned_node.set_meta('spawn_signal_name', signal_name)
 	
 	var node_path = str(spawned_node.get_path())
 	spawn_records[node_path] = spawn_record
 	spawned_nodes[node_path] = spawned_node
-	node_scenes[node_path] = scene.resource_path
 	
 	#print ("[%s] spawned: %s" % [SyncManager.current_tick, spawned_node.name])
-	
-	emit_signal("scene_spawned", signal_name, spawned_node, scene, data)
 	
 	return spawned_node
 
 func despawn(node: Node) -> void:
-	_do_despawn(node, str(node.get_path()))
-
-func _do_despawn(node: Node, node_path: String) -> void:
-	if node.has_method('_network_despawn'):
-		node._network_despawn()
+	if node.has_signal("despawned"):
+		node.emit_signal("despawned")
+	
+	var node_path: = str(node.get_path())
 	if node.get_parent():
 		node.get_parent().remove_child(node)
 	
-	var signal_name : String = node.get_meta('spawn_signal_name')
-	emit_signal("scene_despawned", signal_name, node)
+	waiting_before_remove[node_path] = 0
 
-	if reuse_despawned_nodes and node_scenes.has(node_path) and is_instance_valid(node) and not node.is_queued_for_deletion():
-		var scene_path = node_scenes[node_path]
+func _network_process(_data: Dictionary) -> void:
+	var to_remove: = []
+	for key in waiting_before_remove.keys():
+		waiting_before_remove[key] += 1
+		if waiting_before_remove[key] > ticks_before_remove:
+			to_remove.append(key)
+	for remove_node_path in to_remove:
+		_delete_node(remove_node_path)
+
+func _delete_node(node_path: String) -> void:
+	# This node was already deleted and we are rolling back, just erase remaining state
+	if not spawned_nodes.has(node_path):
+		spawn_records.erase(node_path)
+		waiting_before_remove.erase(node_path)
+		return
+	
+	var node: Node = spawned_nodes[node_path]
+	if node.get_parent():
+		node.get_parent().remove_child(node)
+	
+	if reuse_despawned_nodes and is_instance_valid(node) and not node.is_queued_for_deletion():
+		if node.has_method('_network_prepare_for_reuse'):
+			node._network_prepare_for_reuse()
+		var scene_path
+		if interpolation_nodes.has(node_path):
+			scene_path = interpolation_nodes[node_path]
+		else:
+			scene_path = spawn_records[node_path].scene
 		if not retired_nodes.has(scene_path):
 			retired_nodes[scene_path] = []
 		retired_nodes[scene_path].append(node)
 	else:
 		node.queue_free()
-	
+
 	spawn_records.erase(node_path)
 	spawned_nodes.erase(node_path)
-	node_scenes.erase(node_path)
+	waiting_before_remove.erase(node_path)
 
 func _save_state() -> Dictionary:
-	for node_path in spawned_nodes.keys().duplicate():
-		var node = spawned_nodes[node_path]
-		if not is_instance_valid(node):
-			spawned_nodes.erase(node_path)
-			spawn_records.erase(node_path)
-			node_scenes.erase(node_path)
-			#print ("[SAVE %s] removing invalid: %s" % [SyncManager.current_tick, node_path])
-		elif node.is_queued_for_deletion():
-			if node.get_parent():
-				node.get_parent().remove_child(node)
-			spawned_nodes.erase(node_path)
-			spawn_records.erase(node_path)
-			node_scenes.erase(node_path)
-			#print ("[SAVE %s] removing deleted: %s" % [SyncManager.current_tick, node_path])
-	
 	return {
 		spawn_records = spawn_records.duplicate(),
 		counter = counter.duplicate(),
+		waiting_before_remove = waiting_before_remove.duplicate()
 	}
 
 func _load_state(state: Dictionary) -> void:
+	if SyncManager.load_type == SyncManager.LoadType.ROLLBACK:
+		# clear interpolation data
+		for node_path in interpolation_nodes.keys():
+			if interpolation_nodes[node_path].type == "unspawn":
+				_delete_node(node_path)
+		interpolation_nodes.clear()
+	
+	for node_path in spawned_nodes.keys():
+		if state.spawn_records.has(node_path):
+			if waiting_before_remove.has(node_path) and not state.waiting_before_remove.has(node_path):
+				# Node that is absent before load but should be added
+				var node: Node = spawned_nodes[node_path]
+				var parent: Node = get_node(state.spawn_records[node_path].parent)
+				parent.add_child(node)
+				_alphabetize_children(parent)
+				if SyncManager.load_type == SyncManager.LoadType.INTERPOLATION_BACKWARD:
+					interpolation_nodes[node_path] = {
+						type = "undespawn",
+						scene = spawn_records[node_path].scene,
+					}
+			elif SyncManager.load_type == SyncManager.LoadType.INTERPOLATION_FORWARD and interpolation_nodes.has(node_path):
+				if interpolation_nodes[node_path].type == "unspawn":
+					# unspawn is cancelled, node is restored
+					var node: Node = spawned_nodes[node_path]
+					var parent: Node = get_node(state.spawn_records[node_path].parent)
+					parent.add_child(node)
+					_alphabetize_children(parent)
+					interpolation_nodes.erase(node_path)
+				elif interpolation_nodes[node_path].type == "undespawn":
+					# undespawn is cancelled, remove node
+					var node: Node = spawned_nodes[node_path]
+					if node.get_parent():
+						node.get_parent().remove_child(node)
+		else:
+			if SyncManager.load_type == SyncManager.LoadType.INTERPOLATION_BACKWARD:
+				# keep this node, it will be used in interpolation_forward
+				interpolation_nodes[node_path] = {
+					type = "unspawn",
+					scene = spawn_records[node_path].scene,
+				}
+				var node: Node = spawned_nodes[node_path]
+				if node.get_parent():
+					node.get_parent().remove_child(node)
+			else:
+				# This node's spawn was cancelled, we can remove it completely
+				_delete_node(node_path)
+	
 	spawn_records = state['spawn_records'].duplicate()
 	counter = state['counter'].duplicate()
-	
-	# Remove nodes that aren't in the state we are loading.
-	for node_path in spawned_nodes.keys().duplicate():
-		if not spawn_records.has(node_path):
-			_do_despawn(spawned_nodes[node_path], node_path)
-			#print ("[LOAD %s] de-spawned: %s" % [SyncManager.current_tick, node_path])
-	
-	# Spawn nodes that don't already exist.
-	for node_path in spawn_records.keys():
-		if spawned_nodes.has(node_path):
-			var old_node = spawned_nodes[node_path]
-			if not is_instance_valid(old_node) or old_node.is_queued_for_deletion():
-				spawned_nodes.erase(node_path)
-				node_scenes.erase(node_path)
-		
-		is_respawning = true
-		
+	waiting_before_remove = state['waiting_before_remove'].duplicate()
+
+func _load_state_forward(state: Dictionary) -> void:
+	for node_path in state.spawn_records.keys():
 		if not spawned_nodes.has(node_path):
-			var spawn_record = spawn_records[node_path]
-			var parent = get_tree().current_scene.get_node(spawn_record['parent'])
-			assert(parent != null, "Can't re-spawn node when parent doesn't exist")
-			var name = spawn_record['name']
+			var spawned_node = _instance_scene(load(state.spawn_records.scene))
+			var name = state.spawn_records.name
+			var parent = get_node(state.spawn_records.parent)
 			_remove_colliding_node(name, parent)
-			var spawned_node = _instance_scene(spawn_record['scene'])
 			spawned_node.name = name
 			parent.add_child(spawned_node)
 			_alphabetize_children(parent)
-			
-			if spawned_node.has_method('_network_spawn'):
-				spawned_node._network_spawn(spawn_record['data'])
-			
-			spawned_nodes[node_path] = spawned_node
-			node_scenes[node_path] = spawn_record['scene']
-			
-			spawned_node.set_meta('spawn_signal_name', spawn_record['signal_name'])
-			# @todo Can we get rid of the load() and just use the path?
-			emit_signal("scene_spawned", spawn_record['signal_name'], spawned_node, load(spawn_record['scene']), spawn_record['data'])
-			#print ("[LOAD %s] re-spawned: %s" % [SyncManager.current_tick, node_path])
-		
-		is_respawning = false
-
+	_load_state(state)

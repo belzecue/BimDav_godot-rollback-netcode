@@ -17,9 +17,6 @@ func setup_sound_manager(_sync_manager) -> void:
 	SyncManager.connect("sync_stopped", self, "_on_SyncManager_sync_stopped")
 
 func play_sound(identifier: String, sound: AudioStream, info: Dictionary = {}) -> void:
-	if SyncManager.is_respawning():
-		return
-	
 	if ticks.has(SyncManager.current_tick):
 		if ticks[SyncManager.current_tick].has(identifier):
 			return
