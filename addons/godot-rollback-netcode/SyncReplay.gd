@@ -88,7 +88,8 @@ func process_message(msg: Dictionary) -> void:
 		
 		"load_state":
 			var state = msg.get('state', {})
-			_do_load_state(state)
+			var events = msg.get('events', {})
+			_do_load_state(state, events)
 		
 		"execute_frame":
 			_do_execute_frame(msg)
@@ -126,9 +127,10 @@ func _do_setup_match2(my_peer_id: int, peer_ids: Array, match_info: Dictionary) 
 
 	SyncManager.start()
 
-func _do_load_state(state: Dictionary) -> void:
+func _do_load_state(state: Dictionary, events: Dictionary) -> void:
 	state = SyncManager.hash_serializer.unserialize(state)
-	SyncManager._call_load_state(state)
+	events = SyncManager.hash_serializer.unserialize(events)
+	SyncManager._call_load_state_forward(state, events)
 
 func _do_execute_frame(msg: Dictionary) -> void:
 	var frame_type: int = msg['frame_type']
@@ -151,4 +153,3 @@ func _do_execute_frame(msg: Dictionary) -> void:
 		
 		_:
 			SyncManager.reset_mechanized_data()
-

@@ -5,6 +5,7 @@ enum LogType {
 	FRAME,
 	STATE,
 	INPUT,
+	EVENT,
 }
 
 enum FrameType {
@@ -122,6 +123,22 @@ func write_state(tick: int, state: Dictionary) -> void:
 		'log_type': LogType.STATE,
 		'tick': tick,
 		'state': SyncManager.hash_serializer.serialize(state.duplicate(true)),
+	}
+	
+	_writer_thread_mutex.lock()
+	_write_queue.push_back(data_to_write)
+	_writer_thread_mutex.unlock()
+	
+	_writer_thread_semaphore.post()
+
+func write_event(tick: int, event: Dictionary) -> void:
+	if event.empty():
+		return
+	
+	var data_to_write := {
+		'log_type': LogType.EVENT,
+		'tick': tick,
+		'event': SyncManager.hash_serializer.serialize(event.duplicate(true)),
 	}
 	
 	_writer_thread_mutex.lock()

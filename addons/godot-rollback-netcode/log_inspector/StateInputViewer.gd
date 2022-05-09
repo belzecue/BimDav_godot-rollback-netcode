@@ -43,6 +43,7 @@ func refresh_replay() -> void:
 	if replay_server and replay_server.is_connected_to_game():
 		var tick: int = int(tick_number_field.value)
 		var state_frame: LogData.StateData = log_data.state.get(tick, null)
+		var events = log_data.get_events_up_to_tick(tick)
 		if state_frame:
 			var state_data: Dictionary
 			if state_frame.mismatches.has(replay_peer_id):
@@ -53,6 +54,7 @@ func refresh_replay() -> void:
 			replay_server.send_message({
 				type = "load_state",
 				state = state_data,
+				events = events,
 			})
 
 func clear() -> void:
@@ -90,7 +92,7 @@ func _on_TickNumber_value_changed(value: float) -> void:
 static func _convert_array_to_dictionary(a: Array) -> Dictionary:
 	var d := {}
 	for i in range(a.size()):
-		d[i] = a[i]
+		d[str(i)] = a[i]
 	return d
 
 func _create_tree_items_from_dictionary(tree: Tree, parent_item: TreeItem, data: Dictionary, data_column: int = 1) -> void:
