@@ -134,6 +134,12 @@ class StateHashFrame:
 				missing.append(peer_id)
 		return missing
 
+enum LoadType {
+	ROLLBACK,
+	INTERPOLATION_BACKWARD,
+	INTERPOLATION_FORWARD,
+}
+
 const DEFAULT_NETWORK_ADAPTOR_PATH := "res://addons/godot-rollback-netcode/RPCNetworkAdaptor.gd"
 const DEFAULT_MESSAGE_SERIALIZER_PATH := "res://addons/godot-rollback-netcode/MessageSerializer.gd"
 const DEFAULT_HASH_SERIALIZER_PATH := "res://addons/godot-rollback-netcode/HashSerializer.gd"
@@ -180,6 +186,7 @@ var rollback_ticks: int = 0 setget _set_readonly_variable
 var requested_input_complete_tick: int = 0 setget _set_readonly_variable
 var started := false setget _set_readonly_variable
 var tick_time: float setget _set_readonly_variable
+var load_type: int = LoadType.ROLLBACK setget _set_readonly_variable
 
 var _host_starting := false
 var _ping_timer: Timer
@@ -276,8 +283,6 @@ func _ready() -> void:
 	_spawn_manager = SpawnManager.new()
 	_spawn_manager.name = "SpawnManager"
 	add_child(_spawn_manager)
-	_spawn_manager.connect("scene_spawned", self, "_on_SpawnManager_scene_spawned")
-	_spawn_manager.connect("scene_despawned", self, "_on_SpawnManager_scene_despawned")
 	
 	_sound_manager = SoundManager.new()
 	_sound_manager.name = "SoundManager"
@@ -572,7 +577,8 @@ func _call_save_state() -> Dictionary:
 	
 	return state
 
-func _call_load_state(state: Dictionary) -> void:
+func _call_load_state(state: Dictionary, type: int) -> void:
+	load_type = type
 	for node_path in state:
 		if node_path == '$':
 			continue
@@ -580,6 +586,18 @@ func _call_load_state(state: Dictionary) -> void:
 		assert(node != null, "Unable to restore state to missing node: %s" % node_path)
 		if node and node.has_method('_load_state'):
 			node._load_state(state[node_path])
+
+func _call_load_state_forward(state: Dictionary) -> void:
+	for node_path in state:
+		if node_path == '$':
+			continue
+		var node = get_node_or_null(node_path)
+		assert(node != null, "Unable to restore state to missing node: %s" % node_path)
+		if node:
+			if node.has_method('_load_state_forward'):
+				node._load_state_forward(state[node_path])
+			elif node.has_method('_load_state'):
+				node._load_state(state[node_path])
 
 func _call_interpolate_state(weight: float) -> void:
 	for node_path in _interpolation_state:
@@ -1002,7 +1020,7 @@ func _physics_process(_delta: float) -> void:
 		# We need to reload the current tick since we did a partial rollback
 		# to the previous tick in order to interpolate.
 		if interpolation and current_tick > 0 and rollback_ticks == 0:
-			_call_load_state(state_buffer[-1].data)
+			_call_load_state(state_buffer[-1].data, LoadType.INTERPOLATION_FORWARD)
 	
 	if rollback_ticks > 0:
 		if _logger:
@@ -1017,7 +1035,7 @@ func _physics_process(_delta: float) -> void:
 			_handle_fatal_error("Not enough state in buffer to rollback %s frames" % rollback_ticks)
 			return
 		
-		_call_load_state(state_buffer[-rollback_ticks - 1].data)
+		_call_load_state(state_buffer[-rollback_ticks - 1].data, LoadType.ROLLBACK)
 		
 		current_tick -= rollback_ticks
 		
@@ -1183,7 +1201,7 @@ func _physics_process(_delta: float) -> void:
 			
 			# Return to state from the previous frame, so we can interpolate
 			# towards the state of the current frame.
-			_call_load_state(state_buffer[-2].data)
+			_call_load_state(state_buffer[-2].data, LoadType.INTERPOLATION_BACKWARD)
 	
 	_time_since_last_tick = 0.0
 	_ran_physics_process = true
@@ -1426,27 +1444,18 @@ func sort_dictionary_keys(input: Dictionary) -> Dictionary:
 	
 	return output
 
-func spawn(name: String, parent: Node, scene: PackedScene, data: Dictionary = {}, rename: bool = true, signal_name: String = '') -> Node:
+func spawn(name: String, parent: Node, scene: PackedScene, rename: bool = true) -> Node:
 	if not started:
 		push_error("Refusing to spawn %s before SyncManager has started" % name)
 		return null
 	
-	return _spawn_manager.spawn(name, parent, scene, data, rename, signal_name)
+	return _spawn_manager.spawn(name, parent, scene, rename)
 
 func despawn(node: Node) -> void:
 	_spawn_manager.despawn(node)
 
-func _on_SpawnManager_scene_spawned(name: String, spawned_node: Node, scene: PackedScene, data: Dictionary) -> void:
-	emit_signal("scene_spawned", name, spawned_node, scene, data)
-
-func _on_SpawnManager_scene_despawned(name: String, node: Node) -> void:
-	emit_signal("scene_despawned", name, node)
-
 func is_in_rollback() -> bool:
 	return _in_rollback
-
-func is_respawning() -> bool:
-	return _spawn_manager.is_respawning
 
 func set_default_sound_bus(bus: String) -> void:
 	if _sound_manager == null:
