@@ -175,6 +175,7 @@ var max_ticks_to_regain_sync := 300
 var min_lag_to_regain_sync := 5
 var interpolation := false
 var max_state_mismatch_count := 10
+var disable_event_registration := false
 
 var debug_rollback_ticks := 0
 var debug_random_rollback_ticks := 0
@@ -607,11 +608,9 @@ func _call_load_state_forward(state: Dictionary, events: Dictionary) -> void:
 		assert(node != null, "Unable to restore state to missing node: %s" % node_path)
 		if node:
 			if node.has_method('_load_state_forward'):
-				node._load_state_forward(state[node_path])
+				node._load_state_forward(state[node_path], events.get(node_path, {}))
 			elif node.has_method('_load_state'):
 				node._load_state(state[node_path])
-			if events.has(node_path) and node.has_method('_load_events'):
-				node._load_events(events[node_path])
 
 func _call_interpolate_state(weight: float) -> void:
 	for node_path in _interpolation_state:
@@ -1527,6 +1526,9 @@ func _debug_check_consistent_local_state(state: StateBufferFrame, message := "Lo
 			])
 
 func register_event(node: Node, data: Dictionary) -> void:
+	if disable_event_registration:
+		return
+	
 	var path := str(node.get_path())
 	
 	if not _event_scripts.has(path):

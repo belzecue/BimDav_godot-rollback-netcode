@@ -210,7 +210,7 @@ func _load_state(state: Dictionary) -> void:
 	counter = state['counter'].duplicate()
 	waiting_before_remove = state['waiting_before_remove'].duplicate()
 
-func _load_state_forward(state: Dictionary) -> void:
+func _load_state_forward(state: Dictionary, events: Dictionary) -> void:
 	for node_path in state.spawn_records.keys():
 		if not spawned_nodes.has(node_path):
 			var spawn_record = state.spawn_records[node_path]
@@ -222,6 +222,7 @@ func _load_state_forward(state: Dictionary) -> void:
 			spawned_nodes[node_path] = spawned_node
 			parent.add_child(spawned_node)
 			_alphabetize_children(parent)
+	_load_events(events)
 	_load_state(state)
 
 func _load_events(events: Dictionary) -> void:

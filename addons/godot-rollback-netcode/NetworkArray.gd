@@ -50,9 +50,13 @@ func _load_state(state: Dictionary) -> void:
 	_contents_ind = state.contents_ind
 	_size = state.size.duplicate()
 
-func _load_events(events: Array) -> void:
+func _load_state_forward(state: Dictionary, events: Array) -> void:
+	for i in _buffer_size:
+		contents[i].clear()
+		_size[i] = 0
 	contents[_contents_ind] = events
 	_size[_contents_ind] = events.size()
+	_load_state(state)
 
 static func _prepare_events_up_to_tick(tick_number: int, events: Dictionary) -> Array:
 	# only keep the last tick for each node
