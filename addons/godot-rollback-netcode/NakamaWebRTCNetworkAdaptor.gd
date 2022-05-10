@@ -151,7 +151,8 @@ func poll() -> void:
 			if data_channel_state != WebRTCDataChannel.STATE_CONNECTING:
 				var player = OnlineMatch.get_player_by_peer_id(peer_id)
 				var webrtc_peer = OnlineMatch.get_webrtc_peer(player.session_id)
-				_on_OnlineMatch_webrtc_peer_added(webrtc_peer, player)
+				if webrtc_peer != null:
+					_on_OnlineMatch_webrtc_peer_added(webrtc_peer, player)
 			continue
 		
 		data_channel.poll()
@@ -160,3 +161,12 @@ func poll() -> void:
 		while data_channel.get_available_packet_count() > 0:
 			var msg = data_channel.get_packet()
 			emit_signal("received_input_tick", peer_id, msg)
+
+func is_network_host() -> bool:
+	return get_tree().is_network_server()
+
+func is_network_master_for_node(node: Node) -> bool:
+	return node.is_network_master()
+	
+func get_network_unique_id() -> int:
+	return get_tree().get_network_unique_id()
