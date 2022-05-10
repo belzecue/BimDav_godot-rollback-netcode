@@ -499,7 +499,7 @@ func _call_network_process(input_frame: InputBufferFrame) -> void:
 func _call_save_state() -> Dictionary:
 	return hash_serializer.call_save_state()
 
-func _call_load_state(state: Dictionary) -> void:
+func _call_load_state(state: Dictionary, load_type: int) -> void:
 	hash_serializer.call_load_state(state)
 
 func _call_load_state_forward(state: Dictionary, events: Dictionary) -> void:
@@ -571,41 +571,6 @@ func _update_state_hashes() -> void:
 			var serialized_events = SyncManager.hash_serializer.serialize(_get_event_frame(_last_state_hashed_tick).data)
 			_logger.write_event(_last_state_hashed_tick, serialized_events)
 			_logger.write_state(_last_state_hashed_tick, state_frame.data)
-
-func _predict_missing_input(input_frame: InputBufferFrame, previous_frame: InputBufferFrame) -> InputBufferFrame:
-	if not input_frame.is_complete(peers):
-		if not previous_frame:
-			previous_frame = InputBufferFrame.new(-1)
-		var missing_peers := input_frame.get_missing_peers(peers)
-		var missing_peers_predicted_input := {}
-		var missing_peers_ticks_since_real_input := {}
-		for peer_id in missing_peers:
-			missing_peers_predicted_input[peer_id] = {}
-			var peer: Peer = peers[peer_id]
-			missing_peers_ticks_since_real_input[peer_id] = -1 if peer.last_remote_input_tick_received == 0 \
-				else current_tick - peer.last_remote_input_tick_received
-		var nodes: Array = get_tree().get_nodes_in_group('network_sync')
-		for node in nodes:
-			var node_master: int = node.get_network_master()
-			if not node_master in missing_peers:
-				continue
-			
-			var previous_input := previous_frame.get_player_input(node_master)
-			var node_path_str := str(node.get_path())
-			var has_predict_network_input: bool = node.has_method('_predict_remote_input')
-			if has_predict_network_input or previous_input.has(node_path_str):
-				var previous_input_for_node = previous_input.get(node_path_str, {})
-				var ticks_since_real_input: int = missing_peers_ticks_since_real_input[node_master]
-				var predicted_input_for_node = node._predict_remote_input(previous_input_for_node, ticks_since_real_input) if has_predict_network_input else previous_input_for_node.duplicate()
-				if predicted_input_for_node.size() > 0:
-					missing_peers_predicted_input[node_master][node_path_str] = predicted_input_for_node
-		
-		for peer_id in missing_peers_predicted_input.keys():
-			var predicted_input = missing_peers_predicted_input[peer_id]
-			_calculate_data_hash(predicted_input)
-			input_frame.players[peer_id] = InputForPlayer.new(predicted_input, true)
-	
-	return input_frame
 
 func _do_tick(is_rollback: bool = false) -> bool:
 	var input_frame := get_input_frame(current_tick)
@@ -1095,7 +1060,7 @@ func _physics_process(_delta: float) -> void:
 		
 		var local_input = _call_get_local_input()
 		_calculate_data_hash(local_input)
-		input_frame.players[network_adaptor.get_network_unique_id()] = InputForPlayer.new(local_input, false)
+		input_frame.add_input_for_player(network_adaptor.get_network_unique_id(), local_input, false)
 		
 		# Only serialize and send input when we have real remote peers.
 		if peers.size() > 0:
@@ -1319,7 +1284,7 @@ func _process_mechanized_input() -> void:
 		for tick in peer_input:
 			var input = peer_input[tick]
 			var input_frame := _get_or_create_input_frame(int(tick))
-			input_frame.players[int(peer_id)] = InputForPlayer.new(input, false)
+			input_frame.add_input_for_player(int(peer_id), input, false)
 
 func execute_mechanized_tick() -> void:
 	_process_mechanized_input()
