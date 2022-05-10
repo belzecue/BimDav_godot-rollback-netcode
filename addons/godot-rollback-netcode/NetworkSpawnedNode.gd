@@ -24,7 +24,11 @@ func callv(method_name: String, args: Array):
 		method_name = method_name,
 		args = args,
 	})
-	return spawned_node.callv(method_name, args)
+	# Disable event registration because registering the call is enough
+	SyncManager.disable_event_registration = true
+	var res = spawned_node.callv(method_name, args)
+	SyncManager.disable_event_registration = false
+	return res
 
 func connect(signal_name: String, target: Object, method: String, binds: Array = [  ], flags: int = 0) -> int:
 	return callv("connect", [signal_name, target, method, binds, flags])
