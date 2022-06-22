@@ -2,6 +2,11 @@ extends Node
 
 const REUSE_DESPAWNED_NODES_SETTING := 'network/rollback/spawn_manager/reuse_despawned_nodes'
 
+enum {
+	UNDO_DESPAWN,
+	UNDO_SPAWN,
+}
+
 var spawn_records := {}
 var spawned_nodes := {}
 var retired_nodes := {}
@@ -15,7 +20,7 @@ var reuse_despawned_nodes := false
 func _ready() -> void:
 	if ProjectSettings.has_setting(REUSE_DESPAWNED_NODES_SETTING):
 		reuse_despawned_nodes = ProjectSettings.get_setting(REUSE_DESPAWNED_NODES_SETTING)
-	ticks_before_remove = ProjectSettings.get_setting("network/rollback/max_buffer_size")
+	ticks_before_remove = ProjectSettings.get_setting("network/rollback/max_buffer_size") + 2
 	
 	add_to_group('network_sync')
 
@@ -81,7 +86,7 @@ func _instance_scene(scene: PackedScene) -> Node:
 	#print ("Instancing new %s" % resource_path)
 	return scene.instance()
 
-func spawn(name: String, parent: Node, scene: PackedScene, rename: bool = true) -> NetworkSpawnedNode:
+func spawn(name: String, parent: Node, scene: PackedScene, data: Dictionary = {}, rename: bool = true) -> NetworkSpawnedNode:
 	var spawned_node = _instance_scene(scene)
 	if rename:
 		name = _rename_node(name)
@@ -104,8 +109,8 @@ func spawn(name: String, parent: Node, scene: PackedScene, rename: bool = true) 
 	return NetworkSpawnedNode.new(spawned_node, self)
 
 func despawn(node: Node) -> void:
-	if node.has_signal("despawned"):
-		node.emit_signal("despawned")
+	if node.has_method("_network_despawn"):
+		node._network_despawn()
 	
 	var node_path: = str(node.get_path())
 	if node.get_parent():
@@ -162,7 +167,7 @@ func _load_state(state: Dictionary) -> void:
 	if SyncManager.load_type == SyncManager.LoadType.ROLLBACK:
 		# clear interpolation data
 		for node_path in interpolation_nodes.keys():
-			if interpolation_nodes[node_path].type == "unspawn":
+			if interpolation_nodes[node_path].type == UNDO_SPAWN:
 				_delete_node(node_path)
 		interpolation_nodes.clear()
 	
@@ -176,18 +181,18 @@ func _load_state(state: Dictionary) -> void:
 				_alphabetize_children(parent)
 				if SyncManager.load_type == SyncManager.LoadType.INTERPOLATION_BACKWARD:
 					interpolation_nodes[node_path] = {
-						type = "undespawn",
+						type = UNDO_DESPAWN,
 						scene = spawn_records[node_path].scene,
 					}
 			elif SyncManager.load_type == SyncManager.LoadType.INTERPOLATION_FORWARD and interpolation_nodes.has(node_path):
-				if interpolation_nodes[node_path].type == "unspawn":
+				if interpolation_nodes[node_path].type == UNDO_SPAWN:
 					# unspawn is cancelled, node is restored
 					var node: Node = spawned_nodes[node_path]
 					var parent: Node = get_node(state.spawn_records[node_path].parent)
 					parent.add_child(node)
 					_alphabetize_children(parent)
 					interpolation_nodes.erase(node_path)
-				elif interpolation_nodes[node_path].type == "undespawn":
+				elif interpolation_nodes[node_path].type == UNDO_DESPAWN:
 					# undespawn is cancelled, remove node
 					var node: Node = spawned_nodes[node_path]
 					if node.get_parent():
@@ -196,7 +201,7 @@ func _load_state(state: Dictionary) -> void:
 			if SyncManager.load_type == SyncManager.LoadType.INTERPOLATION_BACKWARD:
 				# keep this node, it will be used in interpolation_forward
 				interpolation_nodes[node_path] = {
-					type = "unspawn",
+					type = UNDO_SPAWN,
 					scene = spawn_records[node_path].scene,
 				}
 				var node: Node = spawned_nodes[node_path]
@@ -230,10 +235,16 @@ func _load_events(events: Dictionary) -> void:
 		var node = get_node_or_null(path)
 		if node:
 			for e in events[path]:
-				if e['type'] == "callv":
-					node.callv(e['method_name'], e['args'])
-				elif e['type'] == "set":
-					node.set(e['property_name'], e['value'])
+				if e['type'] == "init" and node.has_method("_network_spawn"):
+					var args = e['args']
+					if args is Array:
+						node.callv("_network_spawn", args)
+					else:
+						node._network_spawn(args)
+				elif e['type'] == "connect":
+					var data = e['data'].duplicate()
+					data[1] = get_node(data[1])
+					node.callv("connect", data)
 
 static func _prepare_events_up_to_tick(tick_number: int, events: Dictionary) -> Dictionary:
 	# only keep the last tick for each node
