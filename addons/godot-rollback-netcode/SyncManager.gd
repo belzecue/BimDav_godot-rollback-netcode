@@ -1473,12 +1473,12 @@ func sort_dictionary_keys(input: Dictionary) -> Dictionary:
 	
 	return output
 
-func spawn(name: String, parent: Node, scene: PackedScene, rename: bool = true) -> Node:
+func spawn(name: String, parent: Node, scene: PackedScene, data: Dictionary = {}, rename: bool = true) -> Node:
 	if not started:
 		push_error("Refusing to spawn %s before SyncManager has started" % name)
 		return null
 	
-	return _spawn_manager.spawn(name, parent, scene, rename)
+	return _spawn_manager.spawn(name, parent, scene, data, rename)
 
 func despawn(node: Node) -> void:
 	_spawn_manager.despawn(node)

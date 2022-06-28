@@ -43,7 +43,6 @@ func refresh_replay() -> void:
 	if replay_server and replay_server.is_connected_to_game():
 		var tick: int = int(tick_number_field.value)
 		var state_frame: LogData.StateData = log_data.state.get(tick, null)
-		var events = log_data.get_events_up_to_tick(tick)
 		if state_frame:
 			var state_data: Dictionary
 			if state_frame.mismatches.has(replay_peer_id):
@@ -51,6 +50,7 @@ func refresh_replay() -> void:
 			else:
 				state_data = state_frame.state
 			
+			var events = log_data.get_events_up_to_tick(tick, state_data)
 			replay_server.send_message({
 				type = "load_state",
 				state = state_data,

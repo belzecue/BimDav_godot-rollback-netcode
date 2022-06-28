@@ -13,6 +13,7 @@ var retired_nodes := {}
 var interpolation_nodes := {}
 var counter := {}
 var waiting_before_remove: = {}
+var connections: = {}
 var ticks_before_remove: = 20
 
 var reuse_despawned_nodes := false
@@ -28,6 +29,7 @@ func reset() -> void:
 	spawn_records.clear()
 	counter.clear()
 	waiting_before_remove.clear()
+	connections.clear()
 	
 	for node in spawned_nodes.values():
 		node.queue_free()
@@ -86,10 +88,11 @@ func _instance_scene(scene: PackedScene) -> Node:
 	#print ("Instancing new %s" % resource_path)
 	return scene.instance()
 
-func spawn(name: String, parent: Node, scene: PackedScene, data: Dictionary = {}, rename: bool = true) -> NetworkSpawnedNode:
+func spawn(name: String, parent: Node, scene: PackedScene, data: Dictionary = {}, rename: bool = true) -> Node:
 	var spawned_node = _instance_scene(scene)
+	var internal_name = _rename_node(name)
 	if rename:
-		name = _rename_node(name)
+		name = internal_name
 	_remove_colliding_node(name, parent)
 	spawned_node.name = name
 	parent.add_child(spawned_node)
@@ -100,23 +103,29 @@ func spawn(name: String, parent: Node, scene: PackedScene, data: Dictionary = {}
 		scene = scene.resource_path,
 	}
 
-	var node_path = str(spawned_node.get_path())
-	spawn_records[node_path] = spawn_record
-	spawned_nodes[node_path] = spawned_node
+	spawn_records[internal_name] = spawn_record
+	spawned_nodes[internal_name] = spawned_node
 
 	#print ("[%s] spawned: %s" % [SyncManager.current_tick, spawned_node.name])
+	spawned_node.set_meta("spawn_tick", SyncManager.current_tick)
+	spawned_node.set_meta("spawn_name", internal_name)
+	_init_node(spawned_node, data)
 
-	return NetworkSpawnedNode.new(spawned_node, self)
+	return spawned_node
 
 func despawn(node: Node) -> void:
 	if node.has_method("_network_despawn"):
 		node._network_despawn()
 	
-	var node_path: = str(node.get_path())
+	if not node.has_meta("spawn_name"):
+		push_error("Can't despawn a node that was not spawned")
+		return
+	
+	var internal_name: String = node.get_meta("spawn_name")
 	if node.get_parent():
 		node.get_parent().remove_child(node)
 	
-	waiting_before_remove[node_path] = 0
+	waiting_before_remove[internal_name] = 0
 
 func _network_process(_data: Dictionary) -> void:
 	var to_remove: = []
@@ -124,37 +133,61 @@ func _network_process(_data: Dictionary) -> void:
 		waiting_before_remove[key] += 1
 		if waiting_before_remove[key] > ticks_before_remove:
 			to_remove.append(key)
-	for remove_node_path in to_remove:
-		_delete_node(remove_node_path)
+	for remove_internal_name in to_remove:
+		_delete_node(remove_internal_name)
 
-func _delete_node(node_path: String) -> void:
+func _delete_node(internal_name: String) -> void:
 	# This node was already deleted and we are rolling back, just erase remaining state
-	if not spawned_nodes.has(node_path):
-		spawn_records.erase(node_path)
-		waiting_before_remove.erase(node_path)
+	if not spawned_nodes.has(internal_name):
+		spawn_records.erase(internal_name)
+		waiting_before_remove.erase(internal_name)
 		return
 	
-	var node: Node = spawned_nodes[node_path]
+	var node: Node = spawned_nodes[internal_name]
 	if node.get_parent():
 		node.get_parent().remove_child(node)
 	
 	if reuse_despawned_nodes and is_instance_valid(node) and not node.is_queued_for_deletion():
 		if node.has_method('_network_prepare_for_reuse'):
 			node._network_prepare_for_reuse()
+		if connections.has(node):
+			for connection in connections[node]:
+				node.disconnect(connection[0], connection[1], connection[2])
 		var scene_path
-		if interpolation_nodes.has(node_path):
-			scene_path = interpolation_nodes[node_path]
+		if interpolation_nodes.has(internal_name):
+			scene_path = interpolation_nodes[internal_name]
 		else:
-			scene_path = spawn_records[node_path].scene
+			scene_path = spawn_records[internal_name].scene
 		if not retired_nodes.has(scene_path):
 			retired_nodes[scene_path] = []
 		retired_nodes[scene_path].append(node)
 	else:
 		node.queue_free()
 
-	spawn_records.erase(node_path)
-	spawned_nodes.erase(node_path)
-	waiting_before_remove.erase(node_path)
+	spawn_records.erase(internal_name)
+	spawned_nodes.erase(internal_name)
+	waiting_before_remove.erase(internal_name)
+
+func _init_node(node: Node, args) -> void:
+	if not node.has_method("_network_spawn"):
+		return
+	
+	var processed_data = args
+	if node.has_method("_network_spawn_preprocess"):
+		processed_data = node.callv("_network_spawn_preprocess", args) if args is Array \
+			else node._network_spawn_preprocess(args)
+	SyncManager.register_event(self, {
+			type = "init",
+			node = node.get_meta("spawn_name"),
+			data = processed_data,
+		})
+	# Disable event registration because registering the call is enough
+	SyncManager.disable_event_registration = true
+	if processed_data is Array:
+		node.callv("_network_spawn", processed_data)
+	else:
+		node._network_spawn(processed_data)
+	SyncManager.disable_event_registration = false
 
 func _save_state() -> Dictionary:
 	return {
@@ -166,77 +199,79 @@ func _save_state() -> Dictionary:
 func _load_state(state: Dictionary) -> void:
 	if SyncManager.load_type == SyncManager.LoadType.ROLLBACK:
 		# clear interpolation data
-		for node_path in interpolation_nodes.keys():
-			if interpolation_nodes[node_path].type == UNDO_SPAWN:
-				_delete_node(node_path)
+		for internal_name in interpolation_nodes.keys():
+			if interpolation_nodes[internal_name].type == UNDO_SPAWN:
+				_delete_node(internal_name)
 		interpolation_nodes.clear()
 	
-	for node_path in spawned_nodes.keys():
-		if state.spawn_records.has(node_path):
-			if waiting_before_remove.has(node_path) and not state.waiting_before_remove.has(node_path):
+	for internal_name in spawned_nodes.keys():
+		if state.spawn_records.has(internal_name):
+			if waiting_before_remove.has(internal_name) and not state.waiting_before_remove.has(internal_name):
 				# Node that is absent before load but should be added
-				var node: Node = spawned_nodes[node_path]
-				var parent: Node = get_node(state.spawn_records[node_path].parent)
+				var node: Node = spawned_nodes[internal_name]
+				var parent: Node = get_node(state.spawn_records[internal_name].parent)
 				parent.add_child(node)
 				_alphabetize_children(parent)
 				if SyncManager.load_type == SyncManager.LoadType.INTERPOLATION_BACKWARD:
-					interpolation_nodes[node_path] = {
+					interpolation_nodes[internal_name] = {
 						type = UNDO_DESPAWN,
-						scene = spawn_records[node_path].scene,
+						scene = spawn_records[internal_name].scene,
 					}
-			elif SyncManager.load_type == SyncManager.LoadType.INTERPOLATION_FORWARD and interpolation_nodes.has(node_path):
-				if interpolation_nodes[node_path].type == UNDO_SPAWN:
+			elif SyncManager.load_type == SyncManager.LoadType.INTERPOLATION_FORWARD and interpolation_nodes.has(internal_name):
+				if interpolation_nodes[internal_name].type == UNDO_SPAWN:
 					# unspawn is cancelled, node is restored
-					var node: Node = spawned_nodes[node_path]
-					var parent: Node = get_node(state.spawn_records[node_path].parent)
+					var node: Node = spawned_nodes[internal_name]
+					var parent: Node = get_node(state.spawn_records[internal_name].parent)
 					parent.add_child(node)
 					_alphabetize_children(parent)
-					interpolation_nodes.erase(node_path)
-				elif interpolation_nodes[node_path].type == UNDO_DESPAWN:
+					interpolation_nodes.erase(internal_name)
+				elif interpolation_nodes[internal_name].type == UNDO_DESPAWN:
 					# undespawn is cancelled, remove node
-					var node: Node = spawned_nodes[node_path]
+					var node: Node = spawned_nodes[internal_name]
 					if node.get_parent():
 						node.get_parent().remove_child(node)
 		else:
 			if SyncManager.load_type == SyncManager.LoadType.INTERPOLATION_BACKWARD:
 				# keep this node, it will be used in interpolation_forward
-				interpolation_nodes[node_path] = {
+				interpolation_nodes[internal_name] = {
 					type = UNDO_SPAWN,
-					scene = spawn_records[node_path].scene,
+					scene = spawn_records[internal_name].scene,
 				}
-				var node: Node = spawned_nodes[node_path]
+				var node: Node = spawned_nodes[internal_name]
 				if node.get_parent():
 					node.get_parent().remove_child(node)
 			else:
 				# This node's spawn was cancelled, we can remove it completely
-				_delete_node(node_path)
+				_delete_node(internal_name)
 	
 	spawn_records = state['spawn_records'].duplicate()
 	counter = state['counter'].duplicate()
 	waiting_before_remove = state['waiting_before_remove'].duplicate()
 
 func _load_state_forward(state: Dictionary, events: Dictionary) -> void:
-	for node_path in state.spawn_records.keys():
-		if not spawned_nodes.has(node_path):
-			var spawn_record = state.spawn_records[node_path]
+	for internal_name in state.spawn_records.keys():
+		if not spawned_nodes.has(internal_name):
+			var spawn_record = state.spawn_records[internal_name]
 			var spawned_node = _instance_scene(load(spawn_record.scene))
 			var name = spawn_record.name
 			var parent = get_node(spawn_record.parent)
 			_remove_colliding_node(name, parent)
 			spawned_node.name = name
-			spawned_nodes[node_path] = spawned_node
+			spawned_node.set_meta("spawn_name", internal_name)
+			spawned_nodes[internal_name] = spawned_node
 			parent.add_child(spawned_node)
 			_alphabetize_children(parent)
-	_load_events(events)
 	_load_state(state)
+	_load_events(events)
 
 func _load_events(events: Dictionary) -> void:
-	for path in events.keys():
-		var node = get_node_or_null(path)
-		if node:
-			for e in events[path]:
+	for internal_name in events.keys():
+		var parent = get_node_or_null(spawn_records[internal_name].parent)
+		if parent:
+			var node = parent.get_node(spawn_records[internal_name].name)
+			for e in events[internal_name]:
 				if e['type'] == "init" and node.has_method("_network_spawn"):
-					var args = e['args']
+					var args = e['data']
 					if args is Array:
 						node.callv("_network_spawn", args)
 					else:
@@ -246,7 +281,7 @@ func _load_events(events: Dictionary) -> void:
 					data[1] = get_node(data[1])
 					node.callv("connect", data)
 
-static func _prepare_events_up_to_tick(tick_number: int, events: Dictionary) -> Dictionary:
+static func _prepare_events_up_to_tick(tick_number: int, events: Dictionary, state: Dictionary) -> Dictionary:
 	# only keep the last tick for each node
 	var prepared_events := {}
 	for t in events.keys():
@@ -255,9 +290,26 @@ static func _prepare_events_up_to_tick(tick_number: int, events: Dictionary) -> 
 			break
 		var new_event = events[t]
 		for e in new_event:
-			var path = e['caller']
-			prepared_events[path] = []
-		for e in new_event:
-			var path = e['caller']
+			var path = e['node']
+			if not state.spawn_records.has(path):
+				continue
+			if not prepared_events.has(path):
+				prepared_events[path] = []
 			prepared_events[path].append(e)
 	return prepared_events
+
+
+func connect_signal(node: Node, name: String, target: Node, method: String, binds := [], flags := 0) -> void:
+	if (not node.has_meta("spawn_tick")) or node.get_meta("spawn_tick") != SyncManager.current_tick:
+		push_error("connect_signal only connects nodes on the tick they were spawn (desync risk)")
+		return
+	
+	node.connect(name, target, method, binds, flags)
+	SyncManager.register_event(self, {
+		type = "connect",
+		node = node.get_meta("spawn_name"),
+		data = [name, target.get_path(), method, binds.duplicate(true), flags],
+	})
+	if not connections.has(node):
+		connections[node] = []
+	connections[node].append([name, target, method])

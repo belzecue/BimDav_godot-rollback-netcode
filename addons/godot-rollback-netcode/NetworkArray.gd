@@ -58,7 +58,7 @@ func _load_state_forward(state: Dictionary, events: Array) -> void:
 	_size[_contents_ind] = events.size()
 	_load_state(state)
 
-static func _prepare_events_up_to_tick(tick_number: int, events: Dictionary) -> Array:
+static func _prepare_events_up_to_tick(tick_number: int, events: Dictionary, _state: Dictionary) -> Array:
 	# only keep the last tick for each node
 	var final_contents := []
 	for t in events.keys():

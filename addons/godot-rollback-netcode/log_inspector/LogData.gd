@@ -348,12 +348,13 @@ func get_frame_by_time(peer_id: int, time: int) -> FrameData:
 	
 	return last_matching_frame
 
-func get_events_up_to_tick(tick_number: int) -> Dictionary:
+func get_events_up_to_tick(tick_number: int, state_data: Dictionary) -> Dictionary:
 	var res := {}
 	for path in events.keys():
+		var local_state_data = state_data.get(path, {})
 		var script = _events_scripts[path]
 		if not script:
 			push_error("Script of the event sending Node can't be found")
-		res[path] = script._prepare_events_up_to_tick(tick_number, events[path])
+		res[path] = script._prepare_events_up_to_tick(tick_number, events[path], local_state_data)
 	return res
 	
