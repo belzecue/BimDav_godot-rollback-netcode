@@ -56,8 +56,8 @@ func _on_SyncManager_skip_ticks_flagged(count: int) -> void:
 func _on_SyncManager_prediction_missed(tick: int, peer_id: int, local_input: Dictionary, remote_input: Dictionary) -> void:
 	print ("-----")
 	print ("Prediction missed on tick %s for peer %s" % [tick, peer_id])
-	print ("Received input: %s" % SyncManager.hash_serializer.serialize(remote_input))
-	print ("Predicted input: %s" % SyncManager.hash_serializer.serialize(local_input))
+	print ("Received input: %s" % SyncManager.sync_booster.serialize(remote_input))
+	print ("Predicted input: %s" % SyncManager.sync_booster.serialize(local_input))
 	
 	if _debug_overlay:
 		_debug_overlay.add_message(peer_id, "%s: Rollback %s ticks" % [tick, SyncManager.rollback_ticks])

@@ -83,10 +83,12 @@ var max_frame := 0
 var frame_counter := {}
 var start_time: int
 var end_time: int
+var use_thread: = true
 
 var match_info := {}
 var input := {}
 var state := {}
+var events := {}
 var frames := {}
 
 var peer_time_offsets := {}
@@ -96,6 +98,7 @@ var peer_end_times := {}
 var _is_loading := false
 var _loader_thread: Thread
 var _loader_mutex: Mutex
+var _events_scripts := {}
 
 signal load_progress (current, total)
 signal load_finished ()
@@ -119,6 +122,7 @@ func clear() -> void:
 	match_info.clear()
 	input.clear()
 	state.clear()
+	events.clear()
 	frames.clear()
 	peer_time_offsets.clear()
 
@@ -128,16 +132,19 @@ func load_log_file(path: String) -> void:
 		return
 	
 	var file = File.new()
-	if file.open_compressed(path, File.READ, File.COMPRESSION_ZSTD) != OK:
+	if file.open_compressed(path, File.READ, File.COMPRESSION_FASTLZ) != OK:
 		emit_signal("load_error", "Unable to open file for reading: %s" % path)
 		return
 	
-	if _loader_thread:
-		_loader_thread.wait_to_finish()
-	_loader_thread = Thread.new()
-	
-	_is_loading = true
-	_loader_thread.start(self, "_loader_thread_function", [file, path])
+	if use_thread:
+		if _loader_thread:
+			_loader_thread.wait_to_finish()
+		_loader_thread = Thread.new()
+		
+		_is_loading = true
+		_loader_thread.start(self, "_loader_thread_function", [file, path])
+	else:
+		_loader_thread_function([file, path])
 
 func _set_loading(_value: bool) -> void:
 	_loader_mutex.lock()
@@ -238,6 +245,19 @@ func _add_log_entry(log_entry: Dictionary, peer_id: int) -> void:
 				if not state_data.compare_state(peer_id, log_entry['state']) and not tick in mismatches:
 					mismatches.append(tick)
 		
+		Logger.LogType.EVENT:
+			var event = log_entry['event']
+			for path in event.keys():
+				if path == "":
+					for e in event[path]:
+						if e.type == "script":
+							_events_scripts[e.node_path] = load(e.script_path)
+				else:
+					if not events.has(path):
+						events[path] = {}
+						
+					events[path][tick] = event[path]
+		
 		Logger.LogType.FRAME:
 			log_entry.erase('log_type')
 			var frame_number = frame_counter[peer_id]
@@ -331,3 +351,15 @@ func get_frame_by_time(peer_id: int, time: int) -> FrameData:
 		return last_matching_frame.clone_with_offset(peer_time_offset)
 	
 	return last_matching_frame
+
+func get_events_up_to_tick(tick_number: int, state_data: Dictionary) -> Dictionary:
+	var res := {}
+	for path in events.keys():
+		if _events_scripts.has(path):
+			var local_state_data = state_data.get(path, {})
+			var script = _events_scripts[path]
+			res[path] = script._prepare_events_up_to_tick(tick_number, events[path], local_state_data)
+		else:
+			push_error("Script of the event sending Node can't be found")
+	return res
+	

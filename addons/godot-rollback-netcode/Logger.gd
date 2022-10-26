@@ -5,6 +5,7 @@ enum LogType {
 	FRAME,
 	STATE,
 	INPUT,
+	EVENT,
 }
 
 enum FrameType {
@@ -45,7 +46,7 @@ func start(log_file_name: String, peer_id: int, match_info: Dictionary = {}) -> 
 	if not _started:
 		var err: int
 		
-		err = _log_file.open_compressed(log_file_name, File.WRITE, File.COMPRESSION_ZSTD)
+		err = _log_file.open_compressed(log_file_name, File.WRITE, File.COMPRESSION_FASTLZ)
 		if err != OK:
 			return err
 		
@@ -121,7 +122,23 @@ func write_state(tick: int, state: Dictionary) -> void:
 	var data_to_write := {
 		'log_type': LogType.STATE,
 		'tick': tick,
-		'state': SyncManager.hash_serializer.serialize(state.duplicate(true)),
+		'state': SyncManager.sync_booster.serialize(state.duplicate(true)),
+	}
+	
+	_writer_thread_mutex.lock()
+	_write_queue.push_back(data_to_write)
+	_writer_thread_mutex.unlock()
+	
+	_writer_thread_semaphore.post()
+
+func write_event(tick: int, event: Dictionary) -> void:
+	if event.empty():
+		return
+	
+	var data_to_write := {
+		'log_type': LogType.EVENT,
+		'tick': tick,
+		'event': SyncManager.sync_booster.serialize(event.duplicate(true)),
 	}
 	
 	_writer_thread_mutex.lock()
@@ -137,7 +154,7 @@ func write_input(tick: int, input: Dictionary) -> void:
 		input = {},
 	}
 	for key in input.keys():
-		data_to_write['input'][key] = SyncManager.hash_serializer.serialize(input[key].input.duplicate(true))
+		data_to_write['input'][key] = SyncManager.sync_booster.serialize(input[key][0].duplicate(true))
 	
 	_writer_thread_mutex.lock()
 	_write_queue.push_back(data_to_write)

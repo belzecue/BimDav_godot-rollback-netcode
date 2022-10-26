@@ -42,7 +42,7 @@ func _ready() -> void:
 	state_input_viewer.set_replay_server(replay_server)
 	frame_viewer.set_replay_server(replay_server)
 	
-	file_dialog.current_dir = OS.get_user_data_dir() + "/detailed_logs/"
+	file_dialog.current_dir = OS.get_user_data_dir()
 	
 	# Show and make full screen if the scene is being run on its own.
 	if get_parent() == get_tree().root:

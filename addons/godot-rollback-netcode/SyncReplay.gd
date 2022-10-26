@@ -88,7 +88,8 @@ func process_message(msg: Dictionary) -> void:
 		
 		"load_state":
 			var state = msg.get('state', {})
-			_do_load_state(state)
+			var events = msg.get('events', {})
+			_do_load_state(state, events)
 		
 		"execute_frame":
 			_do_execute_frame(msg)
@@ -106,9 +107,12 @@ func _do_setup_match1(my_peer_id: int, peer_ids: Array, match_info: Dictionary) 
 	for peer_id in peer_ids:
 		SyncManager.add_peer(peer_id)
 	
-	if get_tree().change_scene(match_scene_path) != OK:
-		_show_error_and_quit("Unable to change scene to: %s" % match_scene_path)
-		return
+	var match_scene = load(match_scene_path).instance()
+	if match_scene.has_method("set_launched_from_SyncReplay"):
+		match_scene.set_launched_from_SyncReplay()
+	var tree = get_tree()
+	tree.root.add_child(match_scene)
+	tree.current_scene = match_scene
 	
 	_setting_up_match = true
 	call_deferred("_do_setup_match2", my_peer_id, peer_ids, match_info)
@@ -117,6 +121,7 @@ func _do_setup_match2(my_peer_id: int, peer_ids: Array, match_info: Dictionary) 
 	_setting_up_match = false
 	
 	var match_scene = get_tree().current_scene
+	
 	if not match_scene.has_method(match_scene_method):
 		_show_error_and_quit("Match scene has no such method: %s" % match_scene_method)
 		return
@@ -126,16 +131,17 @@ func _do_setup_match2(my_peer_id: int, peer_ids: Array, match_info: Dictionary) 
 
 	SyncManager.start()
 
-func _do_load_state(state: Dictionary) -> void:
-	state = SyncManager.hash_serializer.unserialize(state)
-	SyncManager._call_load_state(state)
+func _do_load_state(state: Dictionary, events: Dictionary) -> void:
+	state = SyncManager.sync_booster.unserialize(state)
+	events = SyncManager.sync_booster.unserialize(events)
+	SyncManager._call_load_state_forward(state, events)
 
 func _do_execute_frame(msg: Dictionary) -> void:
 	var frame_type: int = msg['frame_type']
 	var input_frames_received: Dictionary = msg.get('input_frames_received', {})
 	var rollback_ticks: int = msg.get('rollback_ticks', 0)
 	
-	input_frames_received = SyncManager.hash_serializer.unserialize(input_frames_received)
+	input_frames_received = SyncManager.sync_booster.unserialize(input_frames_received)
 	SyncManager.mechanized_input_received = input_frames_received
 	SyncManager.mechanized_rollback_ticks = rollback_ticks
 	
@@ -151,4 +157,3 @@ func _do_execute_frame(msg: Dictionary) -> void:
 		
 		_:
 			SyncManager.reset_mechanized_data()
-

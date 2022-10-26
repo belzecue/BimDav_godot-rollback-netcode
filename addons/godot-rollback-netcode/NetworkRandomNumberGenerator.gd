@@ -1,3 +1,4 @@
+tool
 extends Node
 class_name NetworkRandomNumberGenerator
 
@@ -30,3 +31,10 @@ func randi() -> int:
 func randi_range(from: int, to: int) -> int:
 	return generator.randi_range(from, to)
 
+func shuffle(t: Array) -> void:
+	var n: = t.size()
+	for i in range(n - 1, 0, -1):
+		var j: = randi_range(0, i)
+		var e = t[j]
+		t[j] = t[i]
+		t[i] = e

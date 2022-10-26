@@ -15,9 +15,19 @@ _global_script_classes=[ {
 "path": "res://addons/godot-rollback-netcode/NetworkAnimationPlayer.gd"
 }, {
 "base": "Node",
+"class": "NetworkArray",
+"language": "GDScript",
+"path": "res://addons/godot-rollback-netcode/NetworkArray.gd"
+}, {
+"base": "Node",
 "class": "NetworkRandomNumberGenerator",
 "language": "GDScript",
 "path": "res://addons/godot-rollback-netcode/NetworkRandomNumberGenerator.gd"
+}, {
+"base": "SGTween",
+"class": "NetworkSGTween",
+"language": "GDScript",
+"path": "res://addons/godot-rollback-netcode/NetworkSGTween.gd"
 }, {
 "base": "Node",
 "class": "NetworkTimer",
@@ -26,7 +36,9 @@ _global_script_classes=[ {
 } ]
 _global_script_class_icons={
 "NetworkAnimationPlayer": "",
+"NetworkArray": "",
 "NetworkRandomNumberGenerator": "",
+"NetworkSGTween": "",
 "NetworkTimer": ""
 }
 

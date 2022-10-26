@@ -50,9 +50,11 @@ func refresh_replay() -> void:
 			else:
 				state_data = state_frame.state
 			
+			var events = log_data.get_events_up_to_tick(tick, state_data)
 			replay_server.send_message({
 				type = "load_state",
 				state = state_data,
+				events = events,
 			})
 
 func clear() -> void:
@@ -90,7 +92,7 @@ func _on_TickNumber_value_changed(value: float) -> void:
 static func _convert_array_to_dictionary(a: Array) -> Dictionary:
 	var d := {}
 	for i in range(a.size()):
-		d[i] = a[i]
+		d[str(i)] = a[i]
 	return d
 
 func _create_tree_items_from_dictionary(tree: Tree, parent_item: TreeItem, data: Dictionary, data_column: int = 1) -> void:
