@@ -169,6 +169,9 @@ func _loader_thread_function(input: Array) -> void:
 	var file_size = file.get_len()
 	
 	while not file.eof_reached():
+		if file.get_len() - file.get_position() < 4:
+			break
+		
 		var data = file.get_var()
 		if data == null or not data is Dictionary:
 			continue
