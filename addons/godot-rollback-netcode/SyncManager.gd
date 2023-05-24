@@ -1220,7 +1220,7 @@ func _process(delta: float) -> void:
 	_time_since_last_tick += delta
 	
 	# Don't interpolate if we are skipping ticks, or just ran physics process.
-	if interpolation and skip_ticks == 0:
+	if interpolation and skip_ticks == 0 and _ticks_spent_regaining_sync == 0:
 		_call_interpolate_state(Engine.get_physics_interpolation_fraction())
 	
 	# If there are no other peers, then we'll never receive any new input,
