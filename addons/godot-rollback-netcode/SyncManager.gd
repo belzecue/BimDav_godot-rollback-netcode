@@ -1411,17 +1411,23 @@ func sort_dictionary_keys(input: Dictionary) -> Dictionary:
 
 func spawn(name: String, parent: Node, scene: PackedScene, data = {}, rename: bool = true) -> Node:
 	if not started:
-		push_error("Refusing to spawn %s before SyncManager has started" % name)
-		return null
+		var res = scene.instance()
+		parent.add_child(res)
+		return res
 	
 	return _spawn_manager.spawn(name, parent, scene, data, rename)
 
 func despawn(node: Node) -> void:
-	_spawn_manager.despawn(node)
+	if not started:
+		node.queue_free()
+	else:
+		_spawn_manager.despawn(node)
+ 
+ 
 
 func set_synced(node: Node, property: String, value, interpolate:=false) -> void:
 	if not node.is_inside_tree() or not started:
-		node.set(property, value)
+		node.set_indexed(property, value)
 		return
 		
 	_property_manager.set_synced(current_tick, node, property, value, interpolate)
@@ -1472,7 +1478,7 @@ func _debug_check_consistent_local_state(state: StateBufferFrame, message := "Lo
 			])
 
 func register_event(node: Node, data) -> void:
-	if disable_event_registration:
+	if disable_event_registration or not started:
 		return
 	
 	var path := str(node.get_path())
