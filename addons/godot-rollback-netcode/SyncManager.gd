@@ -1214,38 +1214,34 @@ func _process(delta: float) -> void:
 	# order to slim down the normal frames. Or, if interpolation is disabled,
 	# we need to run these always. If we haven't managed to run this for more
 	# one tick, we make sure to sneak it in just in case.
-	if not interpolation or not _ran_physics_process or _ticks_since_last_interpolation_frame > 1:
-		if _logger:
-			_logger.begin_interpolation_frame(current_tick)
-		
-		_time_since_last_tick += delta
-		
-		# Don't interpolate if we are skipping ticks, or just ran physics process.
-		if interpolation and skip_ticks == 0 and not _ran_physics_process:
-			var weight: float = _time_since_last_tick / tick_time
-			if weight > 1.0:
-				weight = 1.0
-			_call_interpolate_state(weight)
-		
-		# If there are no other peers, then we'll never receive any new input,
-		# so we need to update the _input_complete_tick elsewhere. Here's a fine
-		# place to do it!
-		if peers.size() == 0:
-			_update_input_complete_tick()
-		
-		_update_state_hashes()
-		
-		if interpolation:
-			emit_signal("interpolation_frame")
-		
-		# Do this last to catch any data that came in late.
-		network_adaptor.poll()
-		
-		if _logger:
-			_logger.end_interpolation_frame(start_time)
-		
-		# Clear counter, because we just did an interpolation frame.
-		_ticks_since_last_interpolation_frame = 0
+	if _logger:
+		_logger.begin_interpolation_frame(current_tick)
+	
+	_time_since_last_tick += delta
+	
+	# Don't interpolate if we are skipping ticks, or just ran physics process.
+	if interpolation and skip_ticks == 0:
+		_call_interpolate_state(Engine.get_physics_interpolation_fraction())
+	
+	# If there are no other peers, then we'll never receive any new input,
+	# so we need to update the _input_complete_tick elsewhere. Here's a fine
+	# place to do it!
+	if peers.size() == 0:
+		_update_input_complete_tick()
+	
+	_update_state_hashes()
+	
+	if interpolation:
+		emit_signal("interpolation_frame")
+	
+	# Do this last to catch any data that came in late.
+	network_adaptor.poll()
+	
+	if _logger:
+		_logger.end_interpolation_frame(start_time)
+	
+	# Clear counter, because we just did an interpolation frame.
+	_ticks_since_last_interpolation_frame = 0
 	
 	# Clear flag so subsequent _process() calls will know that they weren't
 	# preceeded by _physics_process().
