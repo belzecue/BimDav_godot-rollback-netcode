@@ -482,7 +482,7 @@ func _reset() -> void:
 
 func _on_received_remote_start() -> void:
 	_reset()
-	tick_time = (1.0 / Engine.iterations_per_second)
+	tick_time = (1.0 / ProjectSettings.get_setting("physics/common/physics_fps"))
 	started = true
 	network_adaptor.start_network_adaptor(self)
 	for n in get_tree().get_nodes_in_group("network_sync"):
