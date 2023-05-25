@@ -48,7 +48,7 @@ func _load_state_forward(state: Dictionary, events: Dictionary) -> void:
 	SyncManager.disable_event_registration = false
 	_load_state(state)
 
-static func _prepare_events_up_to_tick(tick_number: int, events: Dictionary) -> Dictionary:
+static func _prepare_events_up_to_tick(tick_number: int, events: Dictionary, _state: Dictionary) -> Dictionary:
 	var ind: = 0
 	var final_contents := {}
 	for t in events.keys():

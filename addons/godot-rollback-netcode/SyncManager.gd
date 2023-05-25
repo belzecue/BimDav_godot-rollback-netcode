@@ -554,7 +554,7 @@ func _call_save_state() -> Dictionary:
 	if _logger:
 		_logger.start_timing("call_save_state")
 	var res = sync_booster.call_save_state()
-	res[_spawn_manager.get_path()] = _spawn_manager._save_state()
+	res[str(_spawn_manager.get_path())] = _spawn_manager._save_state()
 	if _logger:
 		_logger.stop_timing("call_save_state")
 	return res
@@ -563,13 +563,15 @@ func _call_load_state(state: Dictionary, p_load_type: int) -> void:
 	if _logger:
 		_logger.start_timing("call_load_state")
 	load_type = p_load_type
-	_spawn_manager._load_state(state[_spawn_manager.get_path()])
+	_spawn_manager._load_state(state[str(_spawn_manager.get_path())])
 	sync_booster.call_load_state(state)
 	if _logger:
 		_logger.stop_timing("call_load_state", true)
 
 func _call_load_state_forward(state: Dictionary, events: Dictionary) -> void:
-	var spawn_manager_path: NodePath = _spawn_manager.get_path()
+	_spawn_manager.reset()
+	_property_manager.reset()
+	var spawn_manager_path: = str(_spawn_manager.get_path())
 	_spawn_manager._load_state_forward(state[spawn_manager_path], events.get(spawn_manager_path, {}))
 	state.erase(spawn_manager_path)
 	for node_path in state:
@@ -1413,6 +1415,7 @@ func spawn(name: String, parent: Node, scene: PackedScene, data = {}, rename: bo
 	if not started:
 		var res = scene.instance()
 		parent.add_child(res)
+		_spawn_manager._init_node(res, data)
 		return res
 	
 	return _spawn_manager.spawn(name, parent, scene, data, rename)
@@ -1433,6 +1436,10 @@ func set_synced(node: Node, property: String, value, interpolate:=false) -> void
 	_property_manager.set_synced(current_tick, node, property, value, interpolate)
 
 func connect_signal(node: Node, name: String, target: Node, method: String, binds := [], flags := 0) -> void:
+	if not started:
+		node.connect(name, target, method, binds, flags)
+		return
+	
 	_spawn_manager.connect_signal(node, name, target, method, binds, flags)
 
 func is_in_rollback() -> bool:

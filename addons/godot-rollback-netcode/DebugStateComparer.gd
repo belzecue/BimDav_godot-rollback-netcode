@@ -39,14 +39,15 @@ static func _clean_up_state(state: Dictionary) -> Dictionary:
 		# I think this happens when there's an error reading a Dictionary.
 		if node_path == null:
 			state.erase(null)
-		for key in state[node_path].keys():
-			var value = state[node_path]
-			if key is String:
-				if key.begins_with('_'):
-					value.erase(key)
-			elif key is int:
-				if key < 0:
-					value.erase(key)
+		if state[node_path] is Dictionary:
+			for key in state[node_path].keys():
+				var value = state[node_path]
+				if key is String:
+					if key.begins_with('_'):
+						value.erase(key)
+				elif key is int:
+					if key < 0:
+						value.erase(key)
 	
 	return state
 
