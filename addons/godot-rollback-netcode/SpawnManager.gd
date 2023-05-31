@@ -50,10 +50,11 @@ func _rename_node(name: String) -> String:
 	counter[name] += 1
 	return name + str(counter[name])
 
-func _remove_colliding_node(name: String, parent: Node) -> void:
+func _remove_colliding_node(name: String, parent: Node, warning: = true) -> void:
 	var existing_node = parent.get_node_or_null(name)
 	if existing_node:
-		push_warning("Removing node %s which is in the way of new spawn" % existing_node)
+		if warning:
+			push_warning("Removing node %s which is in the way of new spawn" % existing_node)
 		parent.remove_child(existing_node)
 		existing_node.queue_free()
 
@@ -284,7 +285,7 @@ func _load_state_forward(state: Dictionary, events: Dictionary) -> void:
 			var spawned_node = _instance_scene(load(spawn_record.scene))
 			var name = spawn_record.name
 			var parent = get_node(spawn_record.parent)
-			_remove_colliding_node(name, parent)
+			_remove_colliding_node(name, parent, false)
 			spawned_node.name = name
 			spawned_node.set_meta("spawn_name", internal_name)
 			spawned_nodes[internal_name] = spawned_node

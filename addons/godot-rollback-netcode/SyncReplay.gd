@@ -111,8 +111,8 @@ func _do_setup_match1(my_peer_id: int, peer_ids: Array, match_info: Dictionary) 
 	if match_scene.has_method("set_launched_from_SyncReplay"):
 		match_scene.set_launched_from_SyncReplay()
 	var tree = get_tree()
+	tree.current_scene.free()
 	tree.root.add_child(match_scene)
-	tree.current_scene.queue_free()
 	tree.current_scene = match_scene
 	
 	_setting_up_match = true
