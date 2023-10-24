@@ -9,7 +9,8 @@ const Logger = preload("res://addons/godot-rollback-netcode/Logger.gd")
 const DebugStateComparer = preload("res://addons/godot-rollback-netcode/DebugStateComparer.gd")
 
 class Peer extends Reference:
-	var peer_id: int
+	var peer_id: int setget _set_readonly_variable
+	var spectator: bool = false setget _set_readonly_variable
 
 	var rtt: int
 	var last_ping_received: int
@@ -26,8 +27,12 @@ class Peer extends Reference:
 	var calculated_advantage: float
 	var advantage_list := []
 
-	func _init(_peer_id: int) -> void:
+	func _set_readonly_variable(_value) -> void:
+		pass
+
+	func _init(_peer_id: int, _options: Dictionary) -> void:
 		peer_id = _peer_id
+		spectator = _options.get('spectator', false)
 
 	func record_advantage(ticks_to_calculate_advantage: int) -> void:
 		advantage_list.append(local_lag - remote_lag)
@@ -147,6 +152,7 @@ var input_buffer := []
 var state_buffer := []
 var state_hashes := []
 
+var spectating := false setget set_spectating
 var mechanized := false setget set_mechanized
 var mechanized_input_received := {}
 var mechanized_rollback_ticks := 0
@@ -181,6 +187,7 @@ var requested_input_complete_tick: int = 0 setget _set_readonly_variable
 var started := false setget _set_readonly_variable
 var tick_time: float setget _set_readonly_variable
 
+var _player_peers := {}
 var _host_starting := false
 var _ping_timer: Timer
 var _spawn_manager
@@ -340,6 +347,10 @@ func set_hash_serializer(_hash_serializer: Object) -> void:
 	assert(not started, "Changing the hash serializer after SyncManager has started will probably break everything")
 	hash_serializer = _hash_serializer
 
+func set_spectating(_spectating: bool) -> void:
+	assert(not started, "Changing the spectating flag after SyncManager has started will probably break everything")
+	spectating = _spectating
+
 func set_mechanized(_mechanized: bool) -> void:
 	assert(not started, "Changing the mechanized flag after SyncManager has started will probably break everything")
 	mechanized = _mechanized
@@ -361,7 +372,7 @@ func set_input_delay(_input_delay: int) -> void:
 		push_warning("Cannot change input delay after sync'ing has already started")
 	input_delay = _input_delay
 
-func add_peer(peer_id: int) -> void:
+func add_peer(peer_id: int, options: Dictionary = {}) -> void:
 	assert(not peers.has(peer_id), "Peer with given id already exists")
 	assert(peer_id != network_adaptor.get_network_unique_id(), "Cannot add ourselves as a peer in SyncManager")
 
@@ -370,8 +381,14 @@ func add_peer(peer_id: int) -> void:
 	if peer_id == network_adaptor.get_network_unique_id():
 		return
 
-	peers[peer_id] = Peer.new(peer_id)
+	_add_peer(peer_id, options)
 	emit_signal("peer_added", peer_id)
+
+func _add_peer(peer_id: int, options: Dictionary) -> void:
+	var peer = Peer.new(peer_id, options)
+	peers[peer_id] = peer
+	if not peer.spectator:
+		_player_peers[peer_id] = peer
 
 func has_peer(peer_id: int) -> bool:
 	return peers.has(peer_id)
@@ -379,12 +396,30 @@ func has_peer(peer_id: int) -> bool:
 func get_peer(peer_id: int) -> Peer:
 	return peers.get(peer_id)
 
+func get_player_peer_ids() -> Array:
+	return _player_peers.keys()
+
+func get_player_peer_count() -> int:
+	return _player_peers.size()
+
 func remove_peer(peer_id: int) -> void:
 	if peers.has(peer_id):
-		peers.erase(peer_id)
+		_remove_peer(peer_id)
 		emit_signal("peer_removed", peer_id)
 	if peers.size() == 0:
 		stop()
+
+func _remove_peer(peer_id: int) -> void:
+	peers.erase(peer_id)
+	if _player_peers.has(peer_id):
+		_player_peers.erase(peer_id)
+
+func update_peer(peer_id: int, options: Dictionary = {}) -> void:
+	assert(peers.has(peer_id), "No peer with given id already exists")
+
+	if peers.has(peer_id):
+		_remove_peer(peer_id)
+		_add_peer(peer_id, options)
 
 func clear_peers() -> void:
 	for peer_id in peers.keys().duplicate():
@@ -513,6 +548,7 @@ func _on_received_remote_stop() -> void:
 
 	emit_signal("sync_stopped")
 	_spawn_manager.reset()
+	spectating = false
 
 func _handle_fatal_error(msg: String):
 	emit_signal("sync_error", msg)
@@ -612,7 +648,7 @@ func _update_input_complete_tick() -> void:
 		var input_frame: InputBufferFrame = get_input_frame(_input_complete_tick + 1)
 		if not input_frame:
 			break
-		if not input_frame.is_complete(peers):
+		if not input_frame.is_complete(_player_peers):
 			break
 		# When we add debug rollbacks mark the input as not complete
 		# so that the invariant "a complete input frame cannot be rolled back" is respected
@@ -653,10 +689,10 @@ func _update_state_hashes() -> void:
 			_logger.write_state(_last_state_hashed_tick, state_frame.data)
 
 func _predict_missing_input(input_frame: InputBufferFrame, previous_frame: InputBufferFrame) -> InputBufferFrame:
-	if not input_frame.is_complete(peers):
+	if not input_frame.is_complete(_player_peers):
 		if not previous_frame:
 			previous_frame = InputBufferFrame.new(-1)
-		var missing_peers := input_frame.get_missing_peers(peers)
+		var missing_peers := input_frame.get_missing_peers(_player_peers)
 		var missing_peers_predicted_input := {}
 		var missing_peers_ticks_since_real_input := {}
 		for peer_id in missing_peers:
@@ -749,8 +785,8 @@ func _cleanup_buffers() -> bool:
 			if _logger:
 				_logger.data['buffer_underrun_message'] = message
 			return false
-		if not input_frame.is_complete(peers):
-			var missing: Array = input_frame.get_missing_peers(peers)
+		if not input_frame.is_complete(_player_peers):
+			var missing: Array = input_frame.get_missing_peers(_player_peers)
 			var message = "Attempting to retire state frame %s, but input frame %s is still missing input (missing peer(s): %s)" % [state_frame_to_retire.tick, input_frame.tick, missing]
 			push_warning(message)
 			if _logger:
@@ -779,8 +815,8 @@ func _cleanup_buffers() -> bool:
 
 	while state_hashes.size() > (max_buffer_size * 2):
 		var state_hash_to_retire: StateHashFrame = state_hashes[0]
-		if not state_hash_to_retire.is_complete(peers) and not mechanized:
-			var missing: Array = state_hash_to_retire.get_missing_peers(peers)
+		if not state_hash_to_retire.is_complete(_player_peers) and not mechanized:
+			var missing: Array = state_hash_to_retire.get_missing_peers(_player_peers)
 			var message = "Attempting to retire state hash frame %s, but we're still missing hashes (missing peer(s): %s)" % [state_hash_to_retire.tick, missing]
 			push_warning(message)
 			if _logger:
@@ -898,7 +934,7 @@ func _get_state_hashes_for_peer(peer: Peer) -> Dictionary:
 	return ret
 
 func _record_advantage(force_calculate_advantage: bool = false) -> void:
-	for peer in peers.values():
+	for peer in _player_peers.values():
 		# Number of frames we are predicting for this peer.
 		peer.local_lag = (input_tick + 1) - peer.last_remote_input_tick_received
 		# Calculate the advantage the peer has over us.
@@ -915,7 +951,7 @@ func _record_advantage(force_calculate_advantage: bool = false) -> void:
 func _calculate_skip_ticks() -> bool:
 	# Attempt to find the greatest advantage.
 	var max_advantage: float
-	for peer in peers.values():
+	for peer in _player_peers.values():
 		max_advantage = max(max_advantage, peer.calculated_advantage)
 
 	if max_advantage >= 2.0 and skip_ticks == 0:
@@ -927,7 +963,7 @@ func _calculate_skip_ticks() -> bool:
 
 func _calculate_max_local_lag() -> int:
 	var max_lag := 0
-	for peer in peers.values():
+	for peer in _player_peers.values():
 		max_lag = max(max_lag, peer.local_lag)
 	return max_lag
 
@@ -985,6 +1021,19 @@ func _send_input_messages_to_all_peers() -> void:
 
 	for peer_id in peers:
 		_send_input_messages_to_peer(peer_id)
+
+func _send_spectating_messages_to_player_peers() -> void:
+	for peer_id in _player_peers:
+		assert(peer_id != network_adaptor.get_network_unique_id(), "Cannot send input to ourselves")
+
+		var peer = _player_peers[peer_id]
+		var msg = {
+			MessageSerializer.InputMessageKey.NEXT_INPUT_TICK_REQUESTED: peer.last_remote_input_tick_received + 1,
+			MessageSerializer.InputMessageKey.NEXT_HASH_TICK_REQUESTED: peer.last_remote_hash_tick_received + 1,
+		}
+
+		var bytes = message_serializer.serialize_message(msg)
+		network_adaptor.send_input_tick(peer_id, bytes)
 
 func _physics_process(_delta: float) -> void:
 	if not started:
@@ -1080,7 +1129,7 @@ func _physics_process(_delta: float) -> void:
 
 		if _ticks_spent_regaining_sync > 0:
 			_ticks_spent_regaining_sync += 1
-			if max_ticks_to_regain_sync > 0 and _ticks_spent_regaining_sync > max_ticks_to_regain_sync:
+			if not spectating and max_ticks_to_regain_sync > 0 and _ticks_spent_regaining_sync > max_ticks_to_regain_sync:
 				_handle_fatal_error("Unable to regain synchronization")
 				return
 
@@ -1090,7 +1139,8 @@ func _physics_process(_delta: float) -> void:
 				if not started:
 					return
 				# Even when we're skipping ticks, still send input.
-				_send_input_messages_to_all_peers()
+				if not spectating:
+					_send_input_messages_to_all_peers()
 				if _logger:
 					_logger.skip_tick(Logger.SkipReason.INPUT_BUFFER_UNDERRUN, start_time)
 				return
@@ -1099,7 +1149,8 @@ func _physics_process(_delta: float) -> void:
 			if min_lag_to_regain_sync > 0 and _calculate_max_local_lag() > min_lag_to_regain_sync:
 				#print ("REGAINING SYNC: wait for local lag to reduce")
 				# Even when we're skipping ticks, still send input.
-				_send_input_messages_to_all_peers()
+				if not spectating:
+					_send_input_messages_to_all_peers()
 				if _logger:
 					_logger.skip_tick(Logger.SkipReason.WAITING_TO_REGAIN_SYNC, start_time)
 				return
@@ -1120,7 +1171,8 @@ func _physics_process(_delta: float) -> void:
 			emit_signal("sync_lost")
 			_ticks_spent_regaining_sync = 1
 			# Even when we're skipping ticks, still send input.
-			_send_input_messages_to_all_peers()
+			if not spectating:
+				_send_input_messages_to_all_peers()
 			if _logger:
 				_logger.skip_tick(Logger.SkipReason.INPUT_BUFFER_UNDERRUN, start_time)
 			return
@@ -1128,11 +1180,12 @@ func _physics_process(_delta: float) -> void:
 		if skip_ticks > 0:
 			skip_ticks -= 1
 			if skip_ticks == 0:
-				for peer in peers.values():
+				for peer in _player_peers.values():
 					peer.clear_advantage()
 			else:
 				# Even when we're skipping ticks, still send input.
-				_send_input_messages_to_all_peers()
+				if not spectating:
+					_send_input_messages_to_all_peers()
 				if _logger:
 					_logger.skip_tick(Logger.SkipReason.ADVANTAGE_ADJUSTMENT, start_time)
 				return
@@ -1159,27 +1212,30 @@ func _physics_process(_delta: float) -> void:
 		if input_frame == null:
 			return
 
-		if _logger:
-			_logger.data['input_tick'] = input_tick
+		if spectating:
+			_send_spectating_messages_to_player_peers()
+		else:
+			if _logger:
+				_logger.data['input_tick'] = input_tick
 
-		var local_input = _call_get_local_input()
-		_calculate_data_hash(local_input)
-		input_frame.players[network_adaptor.get_network_unique_id()] = InputForPlayer.new(local_input, false)
+			var local_input = _call_get_local_input()
+			_calculate_data_hash(local_input)
+			input_frame.players[network_adaptor.get_network_unique_id()] = InputForPlayer.new(local_input, false)
 
-		# Only serialize and send input when we have real remote peers.
-		if peers.size() > 0:
-			var serialized_input: PoolByteArray = message_serializer.serialize_input(local_input)
+			# Only serialize and send input when we have real remote peers.
+			if peers.size() > 0:
+				var serialized_input: PoolByteArray = message_serializer.serialize_input(local_input)
 
-			# check that the serialized then unserialized input matches the original
-			if debug_check_message_serializer_roundtrip:
-				var unserialized_input: Dictionary = message_serializer.unserialize_input(serialized_input)
-				_calculate_data_hash(unserialized_input)
-				if local_input["$"] != unserialized_input["$"]:
-					push_error("The input is different after being serialized and unserialized \n Original: %s \n Unserialized: %s" % [ordered_dict2str(local_input), ordered_dict2str(unserialized_input)])
+				# check that the serialized then unserialized input matches the original
+				if debug_check_message_serializer_roundtrip:
+					var unserialized_input: Dictionary = message_serializer.unserialize_input(serialized_input)
+					_calculate_data_hash(unserialized_input)
+					if local_input["$"] != unserialized_input["$"]:
+						push_error("The input is different after being serialized and unserialized \n Original: %s \n Unserialized: %s" % [ordered_dict2str(local_input), ordered_dict2str(unserialized_input)])
 
-			_input_send_queue.append(serialized_input)
-			assert(input_tick == _input_send_queue_start_tick + _input_send_queue.size() - 1, "Input send queue ticks numbers are misaligned")
-			_send_input_messages_to_all_peers()
+				_input_send_queue.append(serialized_input)
+				assert(input_tick == _input_send_queue_start_tick + _input_send_queue.size() - 1, "Input send queue ticks numbers are misaligned")
+				_send_input_messages_to_all_peers()
 
 	if current_tick > 0:
 		if _logger:
@@ -1306,7 +1362,18 @@ func _on_received_input_tick(peer_id: int, serialized_msg: PoolByteArray) -> voi
 
 	var msg = message_serializer.unserialize_message(serialized_msg)
 
+	var peer: Peer = peers[peer_id]
+
+	# Record the next frame the other peer needs.
+	peer.next_local_input_tick_requested = max(msg[MessageSerializer.InputMessageKey.NEXT_INPUT_TICK_REQUESTED], peer.next_local_input_tick_requested)
+
+	# Record the next state hash that the other peer needs.
+	peer.next_local_hash_tick_requested = max(msg[MessageSerializer.InputMessageKey.NEXT_HASH_TICK_REQUESTED], peer.next_local_hash_tick_requested)
+
 	var all_remote_input: Dictionary = msg[MessageSerializer.InputMessageKey.INPUT]
+	if all_remote_input.size() == 0:
+		return
+
 	var all_remote_ticks = all_remote_input.keys()
 	all_remote_ticks.sort()
 
@@ -1327,8 +1394,6 @@ func _on_received_input_tick(peer_id: int, serialized_msg: PoolByteArray) -> voi
 
 	if _logger:
 		_logger.begin_interframe()
-
-	var peer: Peer = peers[peer_id]
 
 	# Only process if it contains ticks we haven't received yet.
 	if last_remote_tick > peer.last_remote_input_tick_received:
@@ -1385,11 +1450,9 @@ func _on_received_input_tick(peer_id: int, serialized_msg: PoolByteArray) -> voi
 		# Update _input_complete_tick for new input.
 		_update_input_complete_tick()
 
-	# Record the next frame the other peer needs.
-	peer.next_local_input_tick_requested = max(msg[MessageSerializer.InputMessageKey.NEXT_INPUT_TICK_REQUESTED], peer.next_local_input_tick_requested)
-
 	# Number of frames the remote is predicting for us.
-	peer.remote_lag = (peer.last_remote_input_tick_received + 1) - peer.next_local_input_tick_requested
+	if not spectating:
+		peer.remote_lag = (peer.last_remote_input_tick_received + 1) - peer.next_local_input_tick_requested
 
 	# Process state hashes.
 	var remote_state_hashes = msg[MessageSerializer.InputMessageKey.STATE_HASHES]
@@ -1404,9 +1467,6 @@ func _on_received_input_tick(peer_id: int, serialized_msg: PoolByteArray) -> voi
 	while index < state_hashes.size() and state_hashes[index].has_peer_hash(peer_id):
 		peer.last_remote_hash_tick_received += 1
 		index += 1
-
-	# Record the next state hash that the other peer needs.
-	peer.next_local_hash_tick_requested = max(msg[MessageSerializer.InputMessageKey.NEXT_HASH_TICK_REQUESTED], peer.next_local_hash_tick_requested)
 
 func reset_mechanized_data() -> void:
 	mechanized_input_received.clear()
