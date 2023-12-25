@@ -660,7 +660,7 @@ humans or external tools can read them, if necessary.
 You can run it like this:
 
 ```
-godot --no-window --script addons/godot-rollback-netcode/log2json.gd --input=INPUT.log --output=OUTPUT.json
+godot --headless --script addons/godot-rollback-netcode/log2json.gd --input=INPUT.log --output=OUTPUT.json
 ```
 
 ... replacing INPUT.log with a full path to the log file, and OUTPUT.json with
