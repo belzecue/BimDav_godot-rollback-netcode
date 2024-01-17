@@ -31,7 +31,7 @@ func _interpolate_state(state_before: Array, state_after: Array, weight: float) 
 	interpolate_state(state_before, state_after, weight)
 
 
-func _load_state_forward(state: Array, events: Array) -> void:
+func _load_state_forward(state: Array, events: Dictionary) -> void:
 	load_state_forward(state, events)
 
 
